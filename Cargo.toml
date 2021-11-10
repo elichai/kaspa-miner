@@ -7,3 +7,11 @@ authors = ["Elichai <elichai.turkel@gmail.com>"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+tonic = "0.6"
+tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
+prost = "0.9"
+futures-util = "0.3"
+tokio-stream = "0.1"
+
+[build-dependencies]
+tonic-build = "0.6"
