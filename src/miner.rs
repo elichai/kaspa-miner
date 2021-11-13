@@ -1,17 +1,17 @@
-use crate::pow;
 use crate::proto::{KaspadMessage, RpcBlock};
-use crate::Error;
+use crate::{pow, Error};
+use log::info;
 use rand::{thread_rng, RngCore};
 use std::num::Wrapping;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
-use tokio::sync::mpsc::error::TryRecvError;
-use tokio::sync::mpsc::{self, Receiver, Sender};
+use tokio::sync::mpsc::{self, error::TryRecvError, Receiver, Sender};
 use tokio::task::{self, JoinHandle};
 use tokio::time::MissedTickBehavior;
 
 type MinerHandler = std::thread::JoinHandle<Result<(), Error>>;
 
+#[allow(dead_code)]
 pub struct MinerManager {
     handles: Vec<MinerHandler>,
     block_channels: Vec<Sender<pow::State>>,
@@ -24,7 +24,7 @@ const LOG_RATE: Duration = Duration::from_secs(10);
 
 impl MinerManager {
     pub fn new(send_channel: Sender<KaspadMessage>, num_threads: u16) -> Self {
-        println!("launching: {} miners", num_threads);
+        info!("launching: {} miners", num_threads);
         let (handels, channels) = (0..num_threads)
             .map(|_| {
                 let (send, recv) = mpsc::channel(1);
@@ -58,7 +58,7 @@ impl MinerManager {
                 state.nonce = nonce.0;
                 if let Some(block) = state.generate_block_if_pow() {
                     send_channel.blocking_send(KaspadMessage::submit_block(block))?;
-                    println!("Found a block!");
+                    info!("Found a block!");
                 }
                 nonce += Wrapping(1);
                 // TODO: Is this really necessary? can we just use Relaxed?
@@ -86,7 +86,7 @@ impl MinerManager {
             let hashes = HASH_TRIED.swap(0, Ordering::AcqRel);
             let kilo_hashes = (hashes as f64) / 1000.0;
             let rate = kilo_hashes / (now - last_instant).as_secs_f64();
-            println!("Current hashrate is: {:.2} Khash/s", rate);
+            info!("Current hashrate is: {:.2} Khash/s", rate);
             last_instant = now;
         }
     }

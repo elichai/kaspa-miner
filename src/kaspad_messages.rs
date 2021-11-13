@@ -1,6 +1,5 @@
-use crate::proto::kaspad_message::Payload;
 use crate::proto::{
-    GetBlockTemplateRequestMessage, GetInfoRequestMessage, KaspadMessage,
+    kaspad_message::Payload, GetBlockTemplateRequestMessage, GetInfoRequestMessage, KaspadMessage,
     NotifyBlockAddedRequestMessage, RpcBlock, SubmitBlockRequestMessage,
 };
 

@@ -1,6 +1,5 @@
-use std::num::Wrapping;
-
 use crate::Hash;
+use std::num::Wrapping;
 
 pub(super) struct XoShiRo256PlusPlus {
     s0: Wrapping<u64>,

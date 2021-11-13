@@ -1,9 +1,12 @@
+use std::sync::Arc;
+
 use crate::pow::hasher::{Hasher, HeaderHasher, PowHasher};
 use crate::pow::heavy_hash::Matrix;
 use crate::proto::{RpcBlock, RpcBlockHeader};
-use crate::target::Uint256;
-use crate::{target, Error};
-use std::sync::Arc;
+use crate::{
+    target::{self, Uint256},
+    Error,
+};
 
 mod hasher;
 mod heavy_hash;

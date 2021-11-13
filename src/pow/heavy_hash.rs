@@ -1,7 +1,4 @@
-// use std::num::Wrapping;
-
-use crate::pow::hasher::HeavyHasher;
-use crate::pow::xoshiro::XoShiRo256PlusPlus;
+use crate::pow::{hasher::HeavyHasher, xoshiro::XoShiRo256PlusPlus};
 use crate::Hash;
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
@@ -213,7 +210,6 @@ mod tests {
         let mut hasher = PowHasher::new();
         hasher.write(&[0xC1, 0xEC, 0xFD, 0xFC]);
         let hash = hasher.finalize();
-        println!("{:?}", hash);
 
         assert_eq!(test_matrix.heavy_hash(hash), expected_hash);
     }

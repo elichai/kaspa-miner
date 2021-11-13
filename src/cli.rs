@@ -1,7 +1,8 @@
-use crate::Error;
-use std::net::IpAddr;
-use std::str::FromStr;
+use log::LevelFilter;
+use std::{net::IpAddr, str::FromStr};
 use structopt::StructOpt;
+
+use crate::Error;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "kaspa-miner", about = "A Kaspa high performance CPU miner")]
@@ -51,7 +52,7 @@ impl Opt {
             let port = self.port();
             self.kaspad_address = format!("grpc://{}:{}", self.kaspad_address, port);
         }
-        println!("kaspad address: {}", self.kaspad_address);
+        log::info!("kaspad address: {}", self.kaspad_address);
         if self.num_threads == 0 {
             self.num_threads = num_cpus::get_physical().try_into()?;
         }
@@ -63,5 +64,13 @@ impl Opt {
         *self
             .port
             .get_or_insert_with(|| if self.testnet { 16211 } else { 16110 })
+    }
+
+    pub fn log_level(&self) -> LevelFilter {
+        if self.debug {
+            LevelFilter::Debug
+        } else {
+            LevelFilter::Info
+        }
     }
 }

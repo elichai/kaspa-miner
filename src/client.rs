@@ -1,15 +1,13 @@
-use crate::miner::MinerManager;
 use crate::proto::kaspad_message::Payload;
 use crate::proto::rpc_client::RpcClient;
 use crate::proto::{GetBlockTemplateRequestMessage, GetInfoRequestMessage, KaspadMessage};
-use crate::Error;
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::error::SendError;
-use tokio::sync::mpsc::Sender;
+use crate::{miner::MinerManager, Error};
+use log::{error, info, warn};
+use tokio::sync::mpsc::{self, error::SendError, Sender};
 use tokio_stream::wrappers::ReceiverStream;
-use tonic::transport::Channel as TonicChannel;
-use tonic::Streaming;
+use tonic::{transport::Channel as TonicChannel, Streaming};
 
+#[allow(dead_code)]
 pub struct KaspadHandler {
     client: RpcClient<TonicChannel>,
     send_channel: Sender<KaspadMessage>,
@@ -50,7 +48,7 @@ impl KaspadHandler {
         while let Some(msg) = self.stream.message().await? {
             match msg.payload {
                 Some(payload) => self.handle_message(payload, &mut miner).await?,
-                None => println!("payload is empty"),
+                None => warn!("kaspad message payload is empty"),
             }
         }
         Ok(())
@@ -65,27 +63,28 @@ impl KaspadHandler {
                 self.send_channel.send(get_block_template.into()).await?;
             }
             Payload::GetBlockTemplateResponse(template) => match (template.block, template.error) {
-                (Some(b), None) => {
-                    if let Err(e) = miner.process_block(b).await {
-                        println!("Failed processing block: {}", e);
-                    }
-                }
-                (None, Some(e)) => println!("GetTemplate returned with an error: {:?}", e),
-                (Some(_), Some(e)) => println!("GetTemplate returned with block&error: {:?}", e),
-                (None, None) => println!("No block and No Error!"),
+                (Some(b), None) => miner.process_block(b).await?,
+                (None, Some(e)) => warn!("GetTemplate returned with an error: {:?}", e),
+                (Some(_), Some(e)) => warn!("GetTemplate returned with block&error: {:?}", e),
+                (None, None) => error!("No block and No Error!"),
             },
             Payload::SubmitBlockResponse(res) => match res.error {
-                None => println!("Submitted block successfully!"),
-                Some(e) => println!("Failed submitting block: {:?}", e),
+                None => info!("Submitted a block successfully!"),
+                Some(e) => warn!("Failed submitting block: {:?}", e),
             },
             Payload::GetBlockResponse(msg) => {
                 if let Some(e) = msg.error {
                     return Err(e.message.into());
                 } else {
-                    println!("Got block response: {:?}", msg);
+                    info!("Get block response: {:?}", msg);
                 }
             }
-            msg => println!("got unknown msg: {:?}", msg),
+            Payload::GetInfoResponse(info) => info!("Kaspad version: {}", info.server_version),
+            Payload::NotifyBlockAddedResponse(res) => match res.error {
+                None => info!("Registered for block notifications"),
+                Some(e) => error!("Failed registering for block notifications: {:?}", e),
+            },
+            msg => info!("got unknown msg: {:?}", msg),
         }
         Ok(())
     }
