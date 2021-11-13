@@ -17,6 +17,7 @@ once_cell = "1"
 num_cpus = "1"
 rand = "0.8"
 blake2b_simd = "0.5"
+structopt = { version = "0.3", features = ["color" ]}
 
 [build-dependencies]
 tonic-build = "0.6"

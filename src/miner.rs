@@ -23,10 +23,9 @@ static HASH_TRIED: AtomicU64 = AtomicU64::new(0);
 const LOG_RATE: Duration = Duration::from_secs(10);
 
 impl MinerManager {
-    pub fn new(send_channel: Sender<KaspadMessage>) -> Self {
-        let n_cpus = num_cpus::get_physical();
-        println!("launching: {} miners", n_cpus);
-        let (handels, channels) = (0..n_cpus)
+    pub fn new(send_channel: Sender<KaspadMessage>, num_threads: u16) -> Self {
+        println!("launching: {} miners", num_threads);
+        let (handels, channels) = (0..num_threads)
             .map(|_| {
                 let (send, recv) = mpsc::channel(1);
                 (Self::launch_miner(send_channel.clone(), recv), send)

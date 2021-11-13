@@ -45,8 +45,8 @@ impl KaspadHandler {
         self.send_channel.send(msg.into()).await
     }
 
-    pub async fn listen(&mut self) -> Result<(), Error> {
-        let mut miner = MinerManager::new(self.send_channel.clone());
+    pub async fn listen(&mut self, num_threads: u16) -> Result<(), Error> {
+        let mut miner = MinerManager::new(self.send_channel.clone(), num_threads);
         while let Some(msg) = self.stream.message().await? {
             match msg.payload {
                 Some(payload) => self.handle_message(payload, &mut miner).await?,
@@ -78,6 +78,13 @@ impl KaspadHandler {
                 None => println!("Submitted block successfully!"),
                 Some(e) => println!("Failed submitting block: {:?}", e),
             },
+            Payload::GetBlockResponse(msg) => {
+                if let Some(e) = msg.error {
+                    return Err(e.message.into());
+                } else {
+                    println!("Got block response: {:?}", msg);
+                }
+            }
             msg => println!("got unknown msg: {:?}", msg),
         }
         Ok(())
