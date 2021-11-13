@@ -1,22 +1,78 @@
-use crate::pow::hasher::Hasher;
+use crate::pow::hasher::{Hasher, HeaderHasher, PowHasher};
 use crate::pow::heavy_hash::Matrix;
 use crate::proto::{RpcBlock, RpcBlockHeader};
 use crate::target::Uint256;
-use crate::{target, Hash};
+use crate::{target, Error};
 use std::sync::Arc;
 
 mod hasher;
 mod heavy_hash;
 mod xoshiro;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct State {
     matrix: Arc<Matrix>,
-    pub timestamp: i64,
     pub nonce: u64,
     target: Uint256,
-    pre_pow_hash: Hash,
     block: Arc<RpcBlock>,
+    // PRE_POW_HASH || TIME || 32 zero byte padding; without NONCE
+    hasher: PowHasher,
+}
+
+impl State {
+    #[inline]
+    pub fn new(block: RpcBlock) -> Result<Self, Error> {
+        let header = &block.header.as_ref().ok_or("Header is missing")?;
+
+        let target = target::u256_from_compact_target(header.bits);
+        let mut hasher = HeaderHasher::new();
+        serialize_header(&mut hasher, header);
+        let pre_pow_hash = hasher.finalize();
+        // PRE_POW_HASH || TIME || 32 zero byte padding || NONCE
+        let mut hasher = PowHasher::new();
+        hasher
+            .update(pre_pow_hash)
+            .update(header.timestamp.to_le_bytes())
+            .update([0u8; 32]);
+        let matrix = Arc::new(Matrix::generate(pre_pow_hash));
+
+        Ok(Self {
+            matrix,
+            nonce: 0,
+            target,
+            block: Arc::new(block),
+            hasher,
+        })
+    }
+
+    #[inline]
+    // PRE_POW_HASH || TIME || 32 zero byte padding || NONCE
+    pub fn calculate_pow(&self) -> Uint256 {
+        // Hasher already contains PRE_POW_HASH || TIME || 32 zero byte padding; so only the NONCE is missing
+        let mut hasher = self.hasher.clone();
+        hasher.update(self.nonce.to_le_bytes());
+        let heavy_hash = self.matrix.heavy_hash(hasher.finalize());
+        Uint256::from_le_bytes(heavy_hash)
+    }
+
+    #[inline]
+    pub fn check_pow(&self) -> bool {
+        let pow = self.calculate_pow();
+        // The pow hash must be less or equal than the claimed target.
+        pow <= self.target
+    }
+
+    pub fn generate_block_if_pow(&self) -> Option<RpcBlock> {
+        self.check_pow().then(|| {
+            let mut block = (*self.block).clone();
+            let header = &mut block
+                .header
+                .as_mut()
+                .expect("We checked that a header exists on creation");
+            header.nonce = self.nonce;
+            block
+        })
+    }
 }
 
 fn assert_eq_type<T>(_: &T, _: &T) {}
@@ -61,8 +117,16 @@ fn serialize_header<H: Hasher>(hasher: &mut H, header: &RpcBlockHeader) {
         .update(header.blue_score.to_le_bytes());
 
     // I'm assuming here BlueWork will never pass 256 bits.
-    let blue_work_len = header.blue_work.len() / 2;
-    decode_to_slice(&header.blue_work, &mut hash[..blue_work_len]).unwrap();
+    let blue_work_len = (header.blue_work.len() + 1) / 2;
+    if header.blue_work.len() % 2 == 0 {
+        decode_to_slice(&header.blue_work, &mut hash[..blue_work_len]).unwrap();
+    } else {
+        let mut blue_work = String::with_capacity(header.blue_work.len() + 1);
+        blue_work.push('0');
+        blue_work.push_str(&header.blue_work);
+        decode_to_slice(&blue_work, &mut hash[..blue_work_len]).unwrap();
+    }
+
     hasher
         .update((blue_work_len as u64).to_le_bytes())
         .update(&hash[..blue_work_len]);
@@ -339,7 +403,10 @@ mod tests {
         serialize_header(&mut buf, &header);
         assert_eq!(&expected_res[..], &buf.0);
 
-        let expected_hash = [85, 146, 211, 217, 138, 239, 47, 85, 152, 59, 58, 16, 4, 149, 129, 179, 172, 226, 174, 233, 160, 96, 202, 54, 6, 225, 64, 142, 106, 0, 110, 137];
+        let expected_hash = [
+            85, 146, 211, 217, 138, 239, 47, 85, 152, 59, 58, 16, 4, 149, 129, 179, 172, 226, 174,
+            233, 160, 96, 202, 54, 6, 225, 64, 142, 106, 0, 110, 137,
+        ];
         let mut hasher = HeaderHasher::new();
         hasher.write(buf.0);
         assert_eq!(hasher.finalize(), expected_hash);
