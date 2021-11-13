@@ -19,16 +19,16 @@ pub struct Opt {
     )]
     pub kaspad_address: String,
 
-    #[structopt(short, long, help = "Kaspad port (default: Mainnet = 16111, Testnet = 16211)")]
+    #[structopt(short, long, help = "Kaspad port [default: Mainnet = 16111, Testnet = 16211]")]
     port: Option<u16>,
 
-    #[structopt(long, help = "Use testnet instead of mainnet (default: false)")]
+    #[structopt(long, help = "Use testnet instead of mainnet [default: false]")]
     testnet: bool,
     #[structopt(
         short = "t",
         long = "threads",
         default_value = "0",
-        help = "Amount of miner threads to launch(default: number of logical cpus)"
+        help = "Amount of miner threads to launch [default: number of logical cpus]"
     )]
     pub num_threads: u16,
 }
