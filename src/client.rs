@@ -1,10 +1,8 @@
+use crate::miner::MinerManager;
 use crate::proto::kaspad_message::Payload;
 use crate::proto::rpc_client::RpcClient;
-use crate::proto::{
-    GetBlockTemplateRequestMessage, GetInfoRequestMessage, KaspadMessage, RpcBlock,
-};
+use crate::proto::{GetBlockTemplateRequestMessage, GetInfoRequestMessage, KaspadMessage};
 use crate::Error;
-use sha3::CShake256;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::Sender;
@@ -13,6 +11,7 @@ use tokio::task::JoinHandle;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::transport::Channel as TonicChannel;
 use tonic::Streaming;
+
 pub struct GrpcClient {
     client: RpcClient<TonicChannel>,
     listen_handler: JoinHandle<Result<KaspadHandler, Error>>,
@@ -25,13 +24,6 @@ pub struct KaspadHandler {
     miner_address: String,
 }
 
-struct MiningBlock {
-    block: RpcBlock,
-    start_state: CShake256,
-}
-
-fn process_block(block: &RpcBlock) {}
-
 impl KaspadHandler {
     pub fn listen(
         stream: Streaming<KaspadMessage>,
@@ -39,13 +31,14 @@ impl KaspadHandler {
         miner_address: String,
     ) -> JoinHandle<Result<KaspadHandler, Error>> {
         task::spawn(async move {
+            let mut miner = MinerManager::new(send_channel.clone());
             let mut handler = Self {
                 send_channel,
                 stream,
                 miner_address,
             };
             while let Some(msg) = handler.stream.message().await? {
-                match &msg.payload {
+                match msg.payload {
                     Some(payload) => match payload {
                         Payload::BlockAddedNotification(_) => {
                             let get_block_template = GetBlockTemplateRequestMessage {
@@ -54,19 +47,23 @@ impl KaspadHandler {
                             handler.send_channel.send(get_block_template.into()).await?;
                         }
                         Payload::GetBlockTemplateResponse(template) => {
-                            if let Some(err) = &template.error {
+                            if let Some(err) = template.error {
                                 println!("Error! {:?}", err);
                                 continue;
                             }
-                            let block = match &template.block {
-                                Some(b) => process_block(b),
+                            match template.block {
+                                Some(b) => {
+                                    if let Err(e) = miner.process_block(b).await {
+                                        println!("Failed processing block: {}", e);
+                                    }
+                                }
                                 None => {
                                     println!("No block and No Error!");
                                     continue;
                                 }
-                            };
+                            }
                         }
-                        _ => println!("got unknown msg: {:?}", msg),
+                        msg => println!("got unknown msg: {:?}", msg),
                     },
                     None => println!("payload is empty"),
                 }
@@ -96,7 +93,7 @@ impl GrpcClient {
         D::Error: Into<Error>,
     {
         let mut client = RpcClient::connect(address).await?;
-        let (send_channel, recv) = mpsc::channel(32);
+        let (send_channel, recv) = mpsc::channel(1);
         send_channel.send(GetInfoRequestMessage {}.into()).await?;
         let stream = client
             .message_stream(ReceiverStream::new(recv))

@@ -1,20 +1,31 @@
 use crate::proto::kaspad_message::Payload;
 use crate::proto::{
     GetBlockTemplateRequestMessage, GetInfoRequestMessage, KaspadMessage,
-    NotifyBlockAddedRequestMessage,
+    NotifyBlockAddedRequestMessage, RpcBlock, SubmitBlockRequestMessage,
 };
 
 impl KaspadMessage {
+    #[inline(always)]
     pub fn get_info_request() -> Self {
         KaspadMessage {
             payload: Some(Payload::GetInfoRequest(GetInfoRequestMessage {})),
         }
     }
+    #[inline(always)]
     pub fn notify_block_added() -> Self {
         KaspadMessage {
             payload: Some(Payload::NotifyBlockAddedRequest(
                 NotifyBlockAddedRequestMessage {},
             )),
+        }
+    }
+
+    #[inline(always)]
+    pub fn submit_block(block: RpcBlock) -> Self {
+        KaspadMessage {
+            payload: Some(Payload::SubmitBlockRequest(SubmitBlockRequestMessage {
+                block: Some(block),
+            })),
         }
     }
 }

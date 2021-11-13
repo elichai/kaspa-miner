@@ -50,7 +50,7 @@ impl Uint256 {
 impl PartialOrd for Uint256 {
     #[inline]
     fn partial_cmp(&self, other: &Uint256) -> Option<Ordering> {
-        Some(self.cmp(&other))
+        Some(self.cmp(other))
     }
 }
 

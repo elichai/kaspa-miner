@@ -1,6 +1,8 @@
 mod client;
 mod kaspad_messages;
+mod miner;
 mod pow;
+mod target;
 
 pub mod proto {
     // tonic::include_proto!("protowire"); // FIXME: https://github.com/intellij-rust/intellij-rust/issues/6579
