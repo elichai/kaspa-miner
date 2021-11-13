@@ -87,12 +87,10 @@ impl Matrix {
         }
 
         // Matrix-vector multiplication, and convert to 4 bits.
-        let product: [u16; 64] =
-            array_from_fn(|i| self.0[i].iter().zip(vec).map(|(&r, v)| r * v).sum::<u16>() >> 10);
+        let product: [u16; 64] = array_from_fn(|i| self.0[i].iter().zip(vec).map(|(&r, v)| r * v).sum::<u16>() >> 10);
 
         // Concatenate 4 LSBs back to 8 bit xor with sum1
-        let data: [u8; 32] =
-            array_from_fn(|i| hash[i] ^ ((product[i * 2] << 4) as u8 | product[2 * i + 1] as u8));
+        let data: [u8; 32] = array_from_fn(|i| hash[i] ^ ((product[i * 2] << 4) as u8 | product[2 * i + 1] as u8));
         let mut hasher = HeavyHasher::new();
         hasher.write(data);
         hasher.finalize()
@@ -137,8 +135,8 @@ mod tests {
     #[test]
     fn test_heavy_hash() {
         let expected_hash = [
-            135, 104, 159, 55, 153, 67, 234, 249, 183, 71, 92, 169, 83, 37, 104, 119, 114, 191,
-            204, 104, 252, 120, 153, 202, 235, 68, 9, 236, 69, 144, 195, 37,
+            135, 104, 159, 55, 153, 67, 234, 249, 183, 71, 92, 169, 83, 37, 104, 119, 114, 191, 204, 104, 252, 120,
+            153, 202, 235, 68, 9, 236, 69, 144, 195, 37,
         ];
         #[rustfmt::skip]
         let test_matrix = Matrix([

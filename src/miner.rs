@@ -47,10 +47,7 @@ impl MinerManager {
         Ok(())
     }
 
-    fn launch_miner(
-        send_channel: Sender<KaspadMessage>,
-        mut block_channel: Receiver<pow::State>,
-    ) -> MinerHandler {
+    fn launch_miner(send_channel: Sender<KaspadMessage>, mut block_channel: Receiver<pow::State>) -> MinerHandler {
         let mut nonce = Wrapping(thread_rng().next_u64());
         std::thread::spawn(move || {
             let mut state = block_channel.blocking_recv().ok_or("Channel is closed")?;
@@ -68,9 +65,7 @@ impl MinerManager {
                     match block_channel.try_recv() {
                         Ok(new_state) => state = new_state,
                         Err(TryRecvError::Empty) => (),
-                        Err(TryRecvError::Disconnected) => {
-                            return Err(TryRecvError::Disconnected.into())
-                        }
+                        Err(TryRecvError::Disconnected) => return Err(TryRecvError::Disconnected.into()),
                     }
                 }
             }

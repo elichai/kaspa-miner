@@ -20,8 +20,7 @@ pub(super) struct HeaderHasher(Blake2bState);
 impl PowHasher {
     #[inline]
     pub(super) fn new() -> Self {
-        static POW_HASHER: Lazy<PowHasher> =
-            Lazy::new(|| Self(CShake256::new(PROOF_OF_WORK_DOMAIN)));
+        static POW_HASHER: Lazy<PowHasher> = Lazy::new(|| Self(CShake256::new(PROOF_OF_WORK_DOMAIN)));
         (*POW_HASHER).clone()
     }
 
@@ -40,8 +39,7 @@ impl PowHasher {
 impl HeavyHasher {
     #[inline]
     pub(super) fn new() -> Self {
-        static HEAVY_HASHER: Lazy<HeavyHasher> =
-            Lazy::new(|| Self(CShake256::new(HEAVY_HASH_DOMAIN)));
+        static HEAVY_HASHER: Lazy<HeavyHasher> = Lazy::new(|| Self(CShake256::new(HEAVY_HASH_DOMAIN)));
         (*HEAVY_HASHER).clone()
     }
 
@@ -60,12 +58,7 @@ impl HeavyHasher {
 impl HeaderHasher {
     #[inline]
     pub(super) fn new() -> Self {
-        Self(
-            blake2b_simd::Params::new()
-                .hash_length(32)
-                .key(BLOCK_HASH_DOMAIN)
-                .to_state(),
-        )
+        Self(blake2b_simd::Params::new().hash_length(32).key(BLOCK_HASH_DOMAIN).to_state())
     }
 
     pub(super) fn write<A: AsRef<[u8]>>(&mut self, data: A) {

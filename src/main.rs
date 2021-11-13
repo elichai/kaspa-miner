@@ -23,16 +23,11 @@ pub type Error = Box<dyn StdError + Send + Sync + 'static>;
 async fn main() -> Result<(), Error> {
     let mut opt: Opt = Opt::from_args();
     opt.process()?;
-    env_logger::builder()
-        .filter_level(opt.log_level())
-        .parse_default_env()
-        .init();
+    env_logger::builder().filter_level(opt.log_level()).parse_default_env().init();
 
     let mut client = KaspadHandler::connect(opt.kaspad_address, opt.mining_address).await?;
 
-    client
-        .client_send(NotifyBlockAddedRequestMessage {})
-        .await?;
+    client.client_send(NotifyBlockAddedRequestMessage {}).await?;
 
     client.listen(opt.num_threads).await
 }

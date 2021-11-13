@@ -24,22 +24,11 @@ impl KaspadHandler {
         let mut client = RpcClient::connect(address).await?;
         let (send_channel, recv) = mpsc::channel(1);
         send_channel.send(GetInfoRequestMessage {}.into()).await?;
-        let stream = client
-            .message_stream(ReceiverStream::new(recv))
-            .await?
-            .into_inner();
-        Ok(Self {
-            client,
-            stream,
-            send_channel,
-            miner_address,
-        })
+        let stream = client.message_stream(ReceiverStream::new(recv)).await?.into_inner();
+        Ok(Self { client, stream, send_channel, miner_address })
     }
 
-    pub async fn client_send(
-        &self,
-        msg: impl Into<KaspadMessage>,
-    ) -> Result<(), SendError<KaspadMessage>> {
+    pub async fn client_send(&self, msg: impl Into<KaspadMessage>) -> Result<(), SendError<KaspadMessage>> {
         self.send_channel.send(msg.into()).await
     }
 
@@ -57,9 +46,7 @@ impl KaspadHandler {
     async fn handle_message(&self, msg: Payload, miner: &mut MinerManager) -> Result<(), Error> {
         match msg {
             Payload::BlockAddedNotification(_) => {
-                let get_block_template = GetBlockTemplateRequestMessage {
-                    pay_address: self.miner_address.clone(),
-                };
+                let get_block_template = GetBlockTemplateRequestMessage { pay_address: self.miner_address.clone() };
                 self.send_channel.send(get_block_template.into()).await?;
             }
             Payload::GetBlockTemplateResponse(template) => match (template.block, template.error) {

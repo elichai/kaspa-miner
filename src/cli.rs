@@ -9,11 +9,7 @@ use crate::Error;
 pub struct Opt {
     #[structopt(short, long, help = "Enable debug logging level")]
     pub debug: bool,
-    #[structopt(
-        short = "a",
-        long = "mining-address",
-        help = "The Kaspa address for the miner reward"
-    )]
+    #[structopt(short = "a", long = "mining-address", help = "The Kaspa address for the miner reward")]
     pub mining_address: String,
     #[structopt(
         short = "s",
@@ -23,11 +19,7 @@ pub struct Opt {
     )]
     pub kaspad_address: String,
 
-    #[structopt(
-        short,
-        long,
-        help = "Kaspad port (default: Mainnet = 16111, Testnet = 16211)"
-    )]
+    #[structopt(short, long, help = "Kaspad port (default: Mainnet = 16111, Testnet = 16211)")]
     port: Option<u16>,
 
     #[structopt(long, help = "Use testnet instead of mainnet (default: false)")]
@@ -61,9 +53,7 @@ impl Opt {
     }
 
     fn port(&mut self) -> u16 {
-        *self
-            .port
-            .get_or_insert_with(|| if self.testnet { 16211 } else { 16110 })
+        *self.port.get_or_insert_with(|| if self.testnet { 16211 } else { 16110 })
     }
 
     pub fn log_level(&self) -> LevelFilter {
