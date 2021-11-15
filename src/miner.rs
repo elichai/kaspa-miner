@@ -54,8 +54,10 @@ impl MinerManager {
             loop {
                 state.nonce = nonce.0;
                 if let Some(block) = state.generate_block_if_pow() {
+                    let block_hash =
+                        block.block_hash().expect("We just got it from the state, we should be able to hash it");
                     send_channel.blocking_send(KaspadMessage::submit_block(block))?;
-                    info!("Found a block!");
+                    info!("Found a block: {:x}", block_hash);
                 }
                 nonce += Wrapping(1);
                 // TODO: Is this really necessary? can we just use Relaxed?

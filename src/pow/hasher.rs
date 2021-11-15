@@ -15,10 +15,10 @@ pub(super) struct PowHasher(CShake256);
 pub(super) struct HeavyHasher(CShake256);
 
 #[derive(Clone)]
-pub(super) struct HeaderHasher(Blake2bState);
+pub struct HeaderHasher(Blake2bState);
 
 impl PowHasher {
-    #[inline]
+    #[inline(always)]
     pub(super) fn new() -> Self {
         static POW_HASHER: Lazy<PowHasher> = Lazy::new(|| Self(CShake256::new(PROOF_OF_WORK_DOMAIN)));
         (*POW_HASHER).clone()
@@ -28,16 +28,16 @@ impl PowHasher {
         self.0.update(data)
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn finalize(self) -> Hash {
         let mut out = [0u8; 32];
         self.0.finalize_xof().read(&mut out);
-        out
+        Hash(out)
     }
 }
 
 impl HeavyHasher {
-    #[inline]
+    #[inline(always)]
     pub(super) fn new() -> Self {
         static HEAVY_HASHER: Lazy<HeavyHasher> = Lazy::new(|| Self(CShake256::new(HEAVY_HASH_DOMAIN)));
         (*HEAVY_HASHER).clone()
@@ -47,29 +47,29 @@ impl HeavyHasher {
         self.0.update(data)
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn finalize(self) -> Hash {
         let mut out = [0u8; 32];
         self.0.finalize_xof().read(&mut out);
-        out
+        Hash(out)
     }
 }
 
 impl HeaderHasher {
-    #[inline]
-    pub(super) fn new() -> Self {
+    #[inline(always)]
+    pub fn new() -> Self {
         Self(blake2b_simd::Params::new().hash_length(32).key(BLOCK_HASH_DOMAIN).to_state())
     }
 
-    pub(super) fn write<A: AsRef<[u8]>>(&mut self, data: A) {
+    pub fn write<A: AsRef<[u8]>>(&mut self, data: A) {
         self.0.update(data.as_ref());
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn finalize(self) -> Hash {
         let mut out = [0u8; 32];
         out.copy_from_slice(self.0.finalize().as_bytes());
-        out
+        Hash(out)
     }
 }
 

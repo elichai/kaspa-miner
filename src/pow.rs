@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use crate::pow::hasher::{Hasher, HeaderHasher, PowHasher};
+pub use crate::pow::hasher::HeaderHasher;
+use crate::pow::hasher::{Hasher, PowHasher};
 use crate::pow::heavy_hash::Matrix;
 use crate::proto::{RpcBlock, RpcBlockHeader};
 use crate::{
@@ -29,7 +30,7 @@ impl State {
 
         let target = target::u256_from_compact_target(header.bits);
         let mut hasher = HeaderHasher::new();
-        serialize_header(&mut hasher, header);
+        serialize_header(&mut hasher, header, true);
         let pre_pow_hash = hasher.finalize();
         // PRE_POW_HASH || TIME || 32 zero byte padding || NONCE
         let mut hasher = PowHasher::new();
@@ -46,7 +47,7 @@ impl State {
         let mut hasher = self.hasher.clone();
         hasher.update(self.nonce.to_le_bytes());
         let heavy_hash = self.matrix.heavy_hash(hasher.finalize());
-        Uint256::from_le_bytes(heavy_hash)
+        Uint256::from_le_bytes(heavy_hash.0)
     }
 
     #[inline]
@@ -66,18 +67,11 @@ impl State {
     }
 }
 
-fn assert_eq_type<T>(_: &T, _: &T) {}
-
 #[cfg(not(any(target_pointer_width = "64", target_pointer_width = "32")))]
 compile_error!("Supporting only 32/64 bits");
 
-// IMPORTANT: This is only correct for PoW purposes
-// If used else where you should remove nonce/timestamp override.
-fn serialize_header<H: Hasher>(hasher: &mut H, header: &RpcBlockHeader) {
-    const NONCE: u64 = 0;
-    const TIMESTAMP: i64 = 0;
-    assert_eq_type(&NONCE, &header.nonce);
-    assert_eq_type(&TIMESTAMP, &header.timestamp);
+pub fn serialize_header<H: Hasher>(hasher: &mut H, header: &RpcBlockHeader, for_pre_pow: bool) {
+    let (nonce, timestamp) = if for_pre_pow { (0, 0) } else { (header.nonce, header.timestamp) };
     let num_parents = header.parents.len();
     let version: u16 = header.version.try_into().unwrap();
     hasher.update(version.to_le_bytes()).update((num_parents as u64).to_le_bytes());
@@ -99,9 +93,9 @@ fn serialize_header<H: Hasher>(hasher: &mut H, header: &RpcBlockHeader) {
     hasher.update(hash);
 
     hasher
-        .update(TIMESTAMP.to_le_bytes())
+        .update(timestamp.to_le_bytes())
         .update(header.bits.to_le_bytes())
-        .update(NONCE.to_le_bytes())
+        .update(nonce.to_le_bytes())
         .update(header.daa_score.to_le_bytes())
         .update(header.blue_score.to_le_bytes());
 

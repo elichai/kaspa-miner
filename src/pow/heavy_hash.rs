@@ -80,6 +80,7 @@ impl Matrix {
     }
 
     pub fn heavy_hash(&self, hash: Hash) -> Hash {
+        let hash = hash.0;
         let mut vec = [0u16; 64];
         for i in 0..32 {
             vec[2 * i] = (hash[i] >> 4) as u16;

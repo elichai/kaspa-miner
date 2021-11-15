@@ -56,7 +56,7 @@ impl KaspadHandler {
                 (None, None) => error!("No block and No Error!"),
             },
             Payload::SubmitBlockResponse(res) => match res.error {
-                None => info!("Submitted a block successfully!"),
+                None => info!("block submitted successfully!"),
                 Some(e) => warn!("Failed submitting block: {:?}", e),
             },
             Payload::GetBlockResponse(msg) => {

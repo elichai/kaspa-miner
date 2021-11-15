@@ -12,10 +12,10 @@ impl XoShiRo256PlusPlus {
     #[inline]
     pub(super) fn new(hash: Hash) -> Self {
         Self {
-            s0: Wrapping(u64::from_le_bytes(hash[0..8].try_into().unwrap())),
-            s1: Wrapping(u64::from_le_bytes(hash[8..16].try_into().unwrap())),
-            s2: Wrapping(u64::from_le_bytes(hash[16..24].try_into().unwrap())),
-            s3: Wrapping(u64::from_le_bytes(hash[24..32].try_into().unwrap())),
+            s0: Wrapping(u64::from_le_bytes(hash.0[0..8].try_into().unwrap())),
+            s1: Wrapping(u64::from_le_bytes(hash.0[8..16].try_into().unwrap())),
+            s2: Wrapping(u64::from_le_bytes(hash.0[16..24].try_into().unwrap())),
+            s3: Wrapping(u64::from_le_bytes(hash.0[24..32].try_into().unwrap())),
         }
     }
 
