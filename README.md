@@ -12,7 +12,7 @@ A Rust binary for file encryption to multiple participants.
 With Rust's package manager cargo, you can install kaspa-miner via:
 
 ```sh
-cargo install kaspa-miner
+cargo install --git https://github.com/elichai/kaspa-miner.git
 ```
 
 ### From Binaries
