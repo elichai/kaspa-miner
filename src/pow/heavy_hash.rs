@@ -115,13 +115,14 @@ mod tests {
     use crate::pow::hasher::PowHasher;
     use crate::pow::heavy_hash::Matrix;
     use crate::pow::xoshiro::XoShiRo256PlusPlus;
+    use crate::Hash;
 
     #[test]
     fn test_compute_rank() {
         let zero = Matrix([[0; 64]; 64]);
         assert_eq!(zero.compute_rank(), 0);
         let mut matrix = zero;
-        let mut gen = XoShiRo256PlusPlus::new([42; 32]);
+        let mut gen = XoShiRo256PlusPlus::new(Hash([42; 32]));
         matrix.0.iter_mut().for_each(|row| {
             row.iter_mut().for_each(|val| {
                 *val = gen.u64() as u16;
@@ -135,10 +136,10 @@ mod tests {
 
     #[test]
     fn test_heavy_hash() {
-        let expected_hash = [
+        let expected_hash = Hash([
             135, 104, 159, 55, 153, 67, 234, 249, 183, 71, 92, 169, 83, 37, 104, 119, 114, 191, 204, 104, 252, 120,
             153, 202, 235, 68, 9, 236, 69, 144, 195, 37,
-        ];
+        ]);
         #[rustfmt::skip]
         let test_matrix = Matrix([
             [13, 2, 14, 13, 2, 15, 14, 3, 10, 4, 1, 8, 4, 3, 8, 15, 15, 15, 15, 15, 2, 11, 15, 15, 15, 1, 7, 12, 12, 4, 2, 0, 6, 1, 14, 10, 12, 14, 15, 8, 10, 12, 0, 5, 13, 3, 14, 10, 10, 6, 12, 11, 11, 7, 6, 6, 10, 2, 2, 4, 11, 12, 0, 5],
@@ -281,7 +282,7 @@ mod tests {
             [10, 12, 2, 14, 14, 1, 11, 8, 3, 7, 13, 7, 2, 1, 14, 13, 7, 6, 15, 8, 15, 12, 13, 10, 11, 15, 4, 2, 6, 13, 12, 3, 2, 10, 15, 14, 10, 11, 8, 14, 9, 3, 12, 9, 15, 2, 14, 14, 5, 13, 7, 6, 2, 1, 1, 4, 1, 0, 13, 10, 1, 0, 2, 9],
             [10, 5, 11, 14, 12, 1, 12, 7, 12, 8, 10, 5, 6, 10, 0, 7, 5, 6, 11, 11, 13, 12, 0, 13, 0, 6, 11, 0, 14, 4, 2, 1, 12, 7, 1, 10, 7, 15, 5, 3, 14, 15, 1, 3, 1, 2, 10, 4, 11, 8, 2, 11, 2, 5, 5, 4, 15, 5, 10, 3, 1, 7, 2, 14],
         ]);
-        let hash = [42; 32];
+        let hash = Hash([42; 32]);
         let matrix = Matrix::generate(hash);
         assert_eq!(matrix, expected_matrix);
     }

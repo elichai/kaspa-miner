@@ -19,7 +19,7 @@ pub mod proto {
 
 pub type Error = Box<dyn StdError + Send + Sync + 'static>;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Hash(pub [u8; 32]);
 
 impl fmt::LowerHex for Hash {

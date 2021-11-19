@@ -155,6 +155,7 @@ mod tests {
     use crate::pow::hasher::{Hasher, HeaderHasher};
     use crate::pow::serialize_header;
     use crate::proto::{RpcBlockHeader, RpcBlockLevelParents};
+    use crate::Hash;
 
     struct Buf(Vec<u8>);
     impl Hasher for Buf {
@@ -353,13 +354,13 @@ mod tests {
             52, 86, 3, 217, 208, 209, 220, 176, 222,
         ];
         let mut buf = Buf(Vec::with_capacity(1951));
-        serialize_header(&mut buf, &header);
+        serialize_header(&mut buf, &header, true);
         assert_eq!(&expected_res[..], &buf.0);
 
-        let expected_hash = [
+        let expected_hash = Hash([
             85, 146, 211, 217, 138, 239, 47, 85, 152, 59, 58, 16, 4, 149, 129, 179, 172, 226, 174, 233, 160, 96, 202,
             54, 6, 225, 64, 142, 106, 0, 110, 137,
-        ];
+        ]);
         let mut hasher = HeaderHasher::new();
         hasher.write(buf.0);
         assert_eq!(hasher.finalize(), expected_hash);
