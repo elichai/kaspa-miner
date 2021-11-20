@@ -1,6 +1,6 @@
 use crate::proto::{KaspadMessage, RpcBlock};
 use crate::{pow, Error};
-use log::info;
+use log::{info, warn};
 use rand::{thread_rng, RngCore};
 use std::num::Wrapping;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -17,6 +17,7 @@ pub struct MinerManager {
     block_channels: Vec<Sender<Option<pow::State>>>,
     send_channel: Sender<KaspadMessage>,
     logger_handle: JoinHandle<()>,
+    is_synced: bool,
 }
 
 static HASH_TRIED: AtomicU64 = AtomicU64::new(0);
@@ -36,17 +37,26 @@ impl MinerManager {
             block_channels: channels,
             send_channel,
             logger_handle: task::spawn(Self::log_hashrate()),
+            is_synced: true,
         }
     }
 
     pub async fn process_block(&mut self, block: Option<RpcBlock>) -> Result<(), Error> {
         let state = match block {
-            Some(b) => Some(pow::State::new(b)?),
+            Some(b) => {
+                self.is_synced = true;
+                Some(pow::State::new(b)?)
+            }
             None => {
-                info!("Kaspad is not synced, skipping current template");
+                if !self.is_synced {
+                    return Ok(());
+                }
+                self.is_synced = false;
+                warn!("Kaspad is not synced, skipping current template");
                 None
             }
         };
+
         for c in &self.block_channels {
             c.send(state.clone()).await.map_err(|e| e.to_string())?;
         }
@@ -59,14 +69,14 @@ impl MinerManager {
     ) -> MinerHandler {
         let mut nonce = Wrapping(thread_rng().next_u64());
         std::thread::spawn(move || {
-            let mut state = block_channel.blocking_recv().ok_or("Channel is closed")?;
+            let mut state = None;
             loop {
+                if state.is_none() {
+                    state = block_channel.blocking_recv().ok_or(TryRecvError::Disconnected)?;
+                }
                 let state_ref = match state.as_mut() {
                     Some(s) => s,
-                    None => {
-                        std::thread::yield_now();
-                        continue;
-                    }
+                    None => continue,
                 };
                 state_ref.nonce = nonce.0;
                 if let Some(block) = state_ref.generate_block_if_pow() {
@@ -94,12 +104,16 @@ impl MinerManager {
         let mut ticker = tokio::time::interval(LOG_RATE);
         ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
         let mut last_instant = ticker.tick().await;
-        loop {
+        for i in 0u64.. {
             let now = ticker.tick().await;
             let hashes = HASH_TRIED.swap(0, Ordering::AcqRel);
             let kilo_hashes = (hashes as f64) / 1000.0;
             let rate = kilo_hashes / (now - last_instant).as_secs_f64();
-            info!("Current hashrate is: {:.2} Khash/s", rate);
+            if hashes == 0 && i % 2 == 0 {
+                warn!("Kaspad is still not synced")
+            } else if hashes != 0 {
+                info!("Current hashrate is: {:.2} Khash/s", rate);
+            }
             last_instant = now;
         }
     }
