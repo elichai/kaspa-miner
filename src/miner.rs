@@ -14,7 +14,7 @@ type MinerHandler = std::thread::JoinHandle<Result<(), Error>>;
 #[allow(dead_code)]
 pub struct MinerManager {
     handles: Vec<MinerHandler>,
-    block_channels: Vec<Sender<pow::State>>,
+    block_channels: Vec<Sender<Option<pow::State>>>,
     send_channel: Sender<KaspadMessage>,
     logger_handle: JoinHandle<()>,
 }
@@ -39,21 +39,37 @@ impl MinerManager {
         }
     }
 
-    pub async fn process_block(&mut self, block: RpcBlock) -> Result<(), Error> {
-        let state = pow::State::new(block)?;
+    pub async fn process_block(&mut self, block: Option<RpcBlock>) -> Result<(), Error> {
+        let state = match block {
+            Some(b) => Some(pow::State::new(b)?),
+            None => {
+                info!("Kaspad is not synced, skipping current template");
+                None
+            }
+        };
         for c in &self.block_channels {
             c.send(state.clone()).await.map_err(|e| e.to_string())?;
         }
         Ok(())
     }
 
-    fn launch_miner(send_channel: Sender<KaspadMessage>, mut block_channel: Receiver<pow::State>) -> MinerHandler {
+    fn launch_miner(
+        send_channel: Sender<KaspadMessage>,
+        mut block_channel: Receiver<Option<pow::State>>,
+    ) -> MinerHandler {
         let mut nonce = Wrapping(thread_rng().next_u64());
         std::thread::spawn(move || {
             let mut state = block_channel.blocking_recv().ok_or("Channel is closed")?;
             loop {
-                state.nonce = nonce.0;
-                if let Some(block) = state.generate_block_if_pow() {
+                let state_ref = match state.as_mut() {
+                    Some(s) => s,
+                    None => {
+                        std::thread::yield_now();
+                        continue;
+                    }
+                };
+                state_ref.nonce = nonce.0;
+                if let Some(block) = state_ref.generate_block_if_pow() {
                     let block_hash =
                         block.block_hash().expect("We just got it from the state, we should be able to hash it");
                     send_channel.blocking_send(KaspadMessage::submit_block(block))?;

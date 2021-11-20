@@ -43,6 +43,7 @@ async fn main() -> Result<(), Error> {
     let mut client = KaspadHandler::connect(opt.kaspad_address, opt.mining_address).await?;
 
     client.client_send(NotifyBlockAddedRequestMessage {}).await?;
+    client.client_get_block_template().await?;
 
     client.listen(opt.num_threads).await
 }

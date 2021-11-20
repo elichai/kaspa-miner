@@ -32,6 +32,10 @@ impl KaspadHandler {
         self.send_channel.send(msg.into()).await
     }
 
+    pub async fn client_get_block_template(&self) -> Result<(), SendError<KaspadMessage>> {
+        self.client_send(GetBlockTemplateRequestMessage { pay_address: self.miner_address.clone() }).await
+    }
+
     pub async fn listen(&mut self, num_threads: u16) -> Result<(), Error> {
         let mut miner = MinerManager::new(self.send_channel.clone(), num_threads);
         while let Some(msg) = self.stream.message().await? {
@@ -45,15 +49,12 @@ impl KaspadHandler {
 
     async fn handle_message(&self, msg: Payload, miner: &mut MinerManager) -> Result<(), Error> {
         match msg {
-            Payload::BlockAddedNotification(_) => {
-                let get_block_template = GetBlockTemplateRequestMessage { pay_address: self.miner_address.clone() };
-                self.send_channel.send(get_block_template.into()).await?;
-            }
-            Payload::GetBlockTemplateResponse(template) => match (template.block, template.error) {
-                (Some(b), None) => miner.process_block(b).await?,
-                (None, Some(e)) => warn!("GetTemplate returned with an error: {:?}", e),
-                (Some(_), Some(e)) => warn!("GetTemplate returned with block&error: {:?}", e),
-                (None, None) => error!("No block and No Error!"),
+            Payload::BlockAddedNotification(_) => self.client_get_block_template().await?,
+            Payload::GetBlockTemplateResponse(template) => match (template.block, template.is_synced, template.error) {
+                (Some(b), true, None) => miner.process_block(Some(b)).await?,
+                (_, _, Some(e)) => warn!("GetTemplate returned with an error: {:?}", e),
+                (_, false, None) => miner.process_block(None).await?,
+                (None, true, None) => error!("No block and No Error!"),
             },
             Payload::SubmitBlockResponse(res) => match res.error {
                 None => info!("block submitted successfully!"),
