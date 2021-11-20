@@ -40,7 +40,7 @@ impl State {
         Ok(Self { matrix, nonce: 0, target, block: Arc::new(block), hasher })
     }
 
-    #[inline]
+    #[inline(always)]
     // PRE_POW_HASH || TIME || 32 zero byte padding || NONCE
     pub fn calculate_pow(&self) -> Uint256 {
         // Hasher already contains PRE_POW_HASH || TIME || 32 zero byte padding; so only the NONCE is missing
@@ -50,13 +50,14 @@ impl State {
         Uint256::from_le_bytes(heavy_hash.0)
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn check_pow(&self) -> bool {
         let pow = self.calculate_pow();
         // The pow hash must be less or equal than the claimed target.
         pow <= self.target
     }
 
+    #[inline(always)]
     pub fn generate_block_if_pow(&self) -> Option<RpcBlock> {
         self.check_pow().then(|| {
             let mut block = (*self.block).clone();
@@ -70,6 +71,7 @@ impl State {
 #[cfg(not(any(target_pointer_width = "64", target_pointer_width = "32")))]
 compile_error!("Supporting only 32/64 bits");
 
+#[inline(always)]
 pub fn serialize_header<H: Hasher>(hasher: &mut H, header: &RpcBlockHeader, for_pre_pow: bool) {
     let (nonce, timestamp) = if for_pre_pow { (0, 0) } else { (header.nonce, header.timestamp) };
     let num_parents = header.parents.len();
@@ -123,7 +125,7 @@ enum FromHexError {
     InvalidHexCharacter { c: char, index: usize },
 }
 
-#[inline]
+#[inline(always)]
 fn decode_to_slice<T: AsRef<[u8]>>(data: T, out: &mut [u8]) -> Result<(), FromHexError> {
     let data = data.as_ref();
     if data.len() % 2 != 0 {
@@ -137,7 +139,7 @@ fn decode_to_slice<T: AsRef<[u8]>>(data: T, out: &mut [u8]) -> Result<(), FromHe
         *byte = val(data[2 * i], 2 * i)? << 4 | val(data[2 * i + 1], 2 * i + 1)?;
     }
 
-    #[inline]
+    #[inline(always)]
     fn val(c: u8, idx: usize) -> Result<u8, FromHexError> {
         match c {
             b'A'..=b'F' => Ok(c - b'A' + 10),

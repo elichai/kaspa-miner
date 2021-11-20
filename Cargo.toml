@@ -24,5 +24,9 @@ structopt = { version = "0.3", features = ["color" ]}
 log = "0.4"
 env_logger = "0.9"
 
+[profile.release]
+lto = true
+codegen-units = 1
+
 [build-dependencies]
 tonic-build = { version = "0.6", default-features = false, features = ["prost", "transport"] }

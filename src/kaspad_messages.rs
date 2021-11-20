@@ -41,6 +41,7 @@ impl From<GetBlockTemplateRequestMessage> for KaspadMessage {
 }
 
 impl RpcBlock {
+    #[inline(always)]
     pub fn block_hash(&self) -> Option<Hash> {
         let mut hasher = HeaderHasher::new();
         pow::serialize_header(&mut hasher, self.header.as_ref()?, false);
