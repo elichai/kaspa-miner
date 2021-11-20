@@ -25,7 +25,7 @@ There's a guide here on how to run a full node and how to generate addresses: ht
 
 Help:
 ```
-kaspa-miner 0.1.0
+kaspa-miner 0.1.1
 A Kaspa high performance CPU miner
 
 USAGE:
