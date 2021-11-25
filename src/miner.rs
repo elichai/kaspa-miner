@@ -4,6 +4,7 @@ use log::{info, warn};
 use rand::{thread_rng, RngCore};
 use std::num::Wrapping;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::{self, error::TryRecvError, Receiver, Sender};
 use tokio::task::{self, JoinHandle};
@@ -18,6 +19,7 @@ pub struct MinerManager {
     send_channel: Sender<KaspadMessage>,
     logger_handle: JoinHandle<()>,
     is_synced: bool,
+    hashes_tried: Arc<AtomicU64>,
 }
 
 impl Drop for MinerManager {
@@ -26,24 +28,25 @@ impl Drop for MinerManager {
     }
 }
 
-static HASH_TRIED: AtomicU64 = AtomicU64::new(0);
 const LOG_RATE: Duration = Duration::from_secs(10);
 
 impl MinerManager {
     pub fn new(send_channel: Sender<KaspadMessage>, num_threads: u16) -> Self {
         info!("launching: {} miners", num_threads);
+        let hashes_tried = Arc::new(AtomicU64::new(0));
         let (handels, channels) = (0..num_threads)
             .map(|_| {
                 let (send, recv) = mpsc::channel(1);
-                (Self::launch_miner(send_channel.clone(), recv), send)
+                (Self::launch_miner(send_channel.clone(), recv, Arc::clone(&hashes_tried)), send)
             })
             .unzip();
         Self {
             handles: handels,
             block_channels: channels,
             send_channel,
-            logger_handle: task::spawn(Self::log_hashrate()),
+            logger_handle: task::spawn(Self::log_hashrate(Arc::clone(&hashes_tried))),
             is_synced: true,
+            hashes_tried,
         }
     }
 
@@ -72,6 +75,7 @@ impl MinerManager {
     fn launch_miner(
         send_channel: Sender<KaspadMessage>,
         mut block_channel: Receiver<Option<pow::State>>,
+        hashes_tried: Arc<AtomicU64>,
     ) -> MinerHandler {
         let mut nonce = Wrapping(thread_rng().next_u64());
         std::thread::spawn(move || {
@@ -93,7 +97,7 @@ impl MinerManager {
                 }
                 nonce += Wrapping(1);
                 // TODO: Is this really necessary? can we just use Relaxed?
-                HASH_TRIED.fetch_add(1, Ordering::AcqRel);
+                hashes_tried.fetch_add(1, Ordering::AcqRel);
 
                 if nonce.0 % 128 == 0 {
                     match block_channel.try_recv() {
@@ -106,13 +110,13 @@ impl MinerManager {
         })
     }
 
-    async fn log_hashrate() {
+    async fn log_hashrate(hashes_tried: Arc<AtomicU64>) {
         let mut ticker = tokio::time::interval(LOG_RATE);
         ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
         let mut last_instant = ticker.tick().await;
         for i in 0u64.. {
             let now = ticker.tick().await;
-            let hashes = HASH_TRIED.swap(0, Ordering::AcqRel);
+            let hashes = hashes_tried.swap(0, Ordering::AcqRel);
             let kilo_hashes = (hashes as f64) / 1000.0;
             let rate = kilo_hashes / (now - last_instant).as_secs_f64();
             if hashes == 0 && i % 2 == 0 {
