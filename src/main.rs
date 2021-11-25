@@ -1,6 +1,7 @@
 use crate::cli::Opt;
 use crate::client::KaspadHandler;
 use crate::proto::NotifyBlockAddedRequestMessage;
+use log::warn;
 use std::error::Error as StdError;
 use std::fmt;
 use structopt::StructOpt;
@@ -40,10 +41,14 @@ async fn main() -> Result<(), Error> {
     opt.process()?;
     env_logger::builder().filter_level(opt.log_level()).parse_default_env().init();
 
-    let mut client = KaspadHandler::connect(opt.kaspad_address, opt.mining_address).await?;
+    loop {
+        let mut client =
+            KaspadHandler::connect(opt.kaspad_address.clone(), opt.mining_address.clone(), opt.mine_when_not_synced)
+                .await?;
+        client.client_send(NotifyBlockAddedRequestMessage {}).await?;
+        client.client_get_block_template().await?;
 
-    client.client_send(NotifyBlockAddedRequestMessage {}).await?;
-    client.client_get_block_template().await?;
-
-    client.listen(opt.num_threads).await
+        client.listen(opt.num_threads).await?;
+        warn!("Disconnected from kaspad, retrying");
+    }
 }

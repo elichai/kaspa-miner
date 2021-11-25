@@ -31,6 +31,11 @@ pub struct Opt {
         help = "Amount of miner threads to launch [default: number of logical cpus]"
     )]
     pub num_threads: u16,
+    #[structopt(
+        long = "mine-when_not-synced",
+        help = "Mine even when kaspad says it is not synced, only useful when passing `--allow-submit-block-when-not-synced` to kaspad  [default: false]"
+    )]
+    pub mine_when_not_synced: bool,
 }
 
 impl Opt {

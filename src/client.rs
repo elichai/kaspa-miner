@@ -13,19 +13,21 @@ pub struct KaspadHandler {
     send_channel: Sender<KaspadMessage>,
     stream: Streaming<KaspadMessage>,
     miner_address: String,
+    mine_when_not_synced: bool,
 }
 
 impl KaspadHandler {
-    pub async fn connect<D>(address: D, miner_address: String) -> Result<Self, Error>
+    pub async fn connect<D>(address: D, miner_address: String, mine_when_not_synced: bool) -> Result<Self, Error>
     where
         D: std::convert::TryInto<tonic::transport::Endpoint>,
         D::Error: Into<Error>,
     {
         let mut client = RpcClient::connect(address).await?;
-        let (send_channel, recv) = mpsc::channel(1);
+        let (send_channel, recv) = mpsc::channel(3);
         send_channel.send(GetInfoRequestMessage {}.into()).await?;
+        send_channel.send(GetBlockTemplateRequestMessage { pay_address: miner_address.clone() }.into()).await?;
         let stream = client.message_stream(ReceiverStream::new(recv)).await?.into_inner();
-        Ok(Self { client, stream, send_channel, miner_address })
+        Ok(Self { client, stream, send_channel, miner_address, mine_when_not_synced })
     }
 
     pub async fn client_send(&self, msg: impl Into<KaspadMessage>) -> Result<(), SendError<KaspadMessage>> {
@@ -52,8 +54,9 @@ impl KaspadHandler {
             Payload::BlockAddedNotification(_) => self.client_get_block_template().await?,
             Payload::GetBlockTemplateResponse(template) => match (template.block, template.is_synced, template.error) {
                 (Some(b), true, None) => miner.process_block(Some(b)).await?,
-                (_, _, Some(e)) => warn!("GetTemplate returned with an error: {:?}", e),
+                (Some(b), false, None) if self.mine_when_not_synced => miner.process_block(Some(b)).await?,
                 (_, false, None) => miner.process_block(None).await?,
+                (_, _, Some(e)) => warn!("GetTemplate returned with an error: {:?}", e),
                 (None, true, None) => error!("No block and No Error!"),
             },
             Payload::SubmitBlockResponse(res) => match res.error {
