@@ -20,6 +20,12 @@ pub struct MinerManager {
     is_synced: bool,
 }
 
+impl Drop for MinerManager {
+    fn drop(&mut self) {
+        self.logger_handle.abort();
+    }
+}
+
 static HASH_TRIED: AtomicU64 = AtomicU64::new(0);
 const LOG_RATE: Duration = Duration::from_secs(10);
 
