@@ -97,3 +97,45 @@ impl Hasher for HeaderHasher {
         self
     }
 }
+
+#[cfg(all(test, feature = "bench"))]
+mod benches {
+    extern crate test;
+
+    use self::test::{black_box, Bencher};
+    use super::{PowHasher, HeavyHasher};
+    use crate::Hash;
+    use crate::pow::hasher::Hasher;
+
+    #[bench]
+    pub fn bench_pow_hash(bh: &mut Bencher) {
+        let mut hasher = PowHasher::new();
+        let timestamp: u64 = 5435345234;
+        let mut nonce: u64 = 432432432;
+        let pre_pow_hash = Hash([42; 32]);
+        hasher.update(pre_pow_hash).update(timestamp.to_le_bytes()).update([0u8; 32]);
+
+        bh.iter(|| {
+            for _ in 0..10 {
+                black_box(&mut hasher);
+                black_box(&mut nonce);
+                let mut hasher = hasher.clone();
+                hasher.update(nonce.to_le_bytes());
+                black_box(hasher.finalize());
+            }
+        });
+    }
+
+    #[bench]
+    pub fn bench_heavy_hash(bh: &mut Bencher) {
+        let mut data = [42; 32];
+        bh.iter(|| {
+            for _ in 0..10 {
+                black_box(&mut data);
+                let mut hasher = HeavyHasher::new();
+                hasher.write(data);
+                black_box(hasher.finalize());
+            }
+        });
+    }
+}
