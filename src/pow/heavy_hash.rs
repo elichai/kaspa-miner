@@ -23,27 +23,31 @@ impl Matrix {
     //     }
     // }
 
-    #[inline]
+    #[inline(always)]
     pub fn generate(hash: Hash) -> Self {
         let mut generator = XoShiRo256PlusPlus::new(hash);
         loop {
-            let mat = Matrix(array_from_fn(|_| {
-                let mut val = 0;
-                array_from_fn(|j| {
-                    let shift = j % 16;
-                    if shift == 0 {
-                        val = generator.u64();
-                    }
-                    (val >> (4 * shift) & 0x0F) as u16
-                })
-            }));
+            let mat = Self::rand_matrix_no_rank_check(&mut generator);
             if mat.compute_rank() == 64 {
                 return mat;
             }
         }
     }
 
-    // TODO: Consider unrolling some of the loops.
+    #[inline(always)]
+    fn rand_matrix_no_rank_check(generator: &mut XoShiRo256PlusPlus) -> Self {
+        Self(array_from_fn(|_| {
+            let mut val = 0;
+            array_from_fn(|j| {
+                let shift = j % 16;
+                if shift == 0 {
+                    val = generator.u64();
+                }
+                (val >> (4 * shift) & 0x0F) as u16
+            })
+        }))
+    }
+
     pub fn compute_rank(&self) -> usize {
         const EPS: f64 = 1e-9;
         let mut mat_float = self.0.map(|a| a.map(f64::from));
@@ -285,5 +289,26 @@ mod tests {
         let hash = Hash([42; 32]);
         let matrix = Matrix::generate(hash);
         assert_eq!(matrix, expected_matrix);
+    }
+}
+
+#[cfg(all(test, feature = "bench"))]
+mod benches {
+    extern crate test;
+
+    use self::test::{black_box, Bencher};
+    use super::{Matrix, XoShiRo256PlusPlus};
+    use crate::Hash;
+
+    #[bench]
+    pub fn bench_compute_rank(bh: &mut Bencher) {
+        let mut generator = XoShiRo256PlusPlus::new(Hash([42; 32]));
+        let mut matrix = Matrix::rand_matrix_no_rank_check(&mut generator);
+        bh.iter(|| {
+            for _ in 0..10 {
+                black_box(&mut matrix);
+                black_box(matrix.compute_rank());
+            }
+        });
     }
 }

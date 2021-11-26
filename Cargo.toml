@@ -24,6 +24,9 @@ structopt = { version = "0.3", features = ["color" ]}
 log = "0.4"
 env_logger = "0.9"
 
+[features]
+bench = []
+
 [profile.release]
 lto = true
 codegen-units = 1
