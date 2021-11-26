@@ -37,17 +37,15 @@ impl Matrix {
                     (val >> (4 * shift) & 0x0F) as u16
                 })
             }));
-            if mat.compute_rank() == 64 {
+            if mat.is_fully_ranked() {
                 return mat;
             }
         }
     }
 
-    // TODO: Consider unrolling some of the loops.
-    pub fn compute_rank(&self) -> usize {
+    pub fn is_fully_ranked(&self) -> bool {
         const EPS: f64 = 1e-9;
         let mut mat_float = self.0.map(|a| a.map(f64::from));
-        let mut rank = 0;
         let mut row_selected = [false; 64];
         for i in 0..64 {
             if i >= 64 {
@@ -62,7 +60,6 @@ impl Matrix {
                 j += 1;
             }
             if j != 64 {
-                rank += 1;
                 row_selected[j] = true;
                 for p in (i + 1)..64 {
                     mat_float[j][p] /= mat_float[j][i];
@@ -74,9 +71,11 @@ impl Matrix {
                         }
                     }
                 }
+            } else {
+                return false
             }
         }
-        rank
+        true
     }
 
     pub fn heavy_hash(&self, hash: Hash) -> Hash {
@@ -118,9 +117,9 @@ mod tests {
     use crate::Hash;
 
     #[test]
-    fn test_compute_rank() {
+    fn test_is_fully_ranked() {
         let zero = Matrix([[0; 64]; 64]);
-        assert_eq!(zero.compute_rank(), 0);
+        assert_eq!(zero.is_fully_ranked(), false);
         let mut matrix = zero;
         let mut gen = XoShiRo256PlusPlus::new(Hash([42; 32]));
         matrix.0.iter_mut().for_each(|row| {
@@ -128,10 +127,10 @@ mod tests {
                 *val = gen.u64() as u16;
             })
         });
-        assert_eq!(matrix.compute_rank(), 64);
+        assert_eq!(matrix.is_fully_ranked(), true);
 
         matrix.0[0] = matrix.0[1];
-        assert_eq!(matrix.compute_rank(), 63);
+        assert_eq!(matrix.is_fully_ranked(), false);
     }
 
     #[test]
