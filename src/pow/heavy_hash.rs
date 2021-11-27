@@ -1,5 +1,6 @@
 use crate::pow::{hasher::HeavyHasher, xoshiro::XoShiRo256PlusPlus};
 use crate::Hash;
+use std::mem::MaybeUninit;
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Matrix([[u16; 64]; 64]);
@@ -48,9 +49,23 @@ impl Matrix {
         }))
     }
 
+    #[inline(always)]
+    fn convert_to_float(&self) -> [[f64; 64]; 64] {
+        // SAFETY: An uninitialized MaybrUninit is always safe.
+        let mut out: [[MaybeUninit<f64>; 64]; 64] = unsafe { MaybeUninit::uninit().assume_init() };
+
+        out.iter_mut().zip(self.0.iter()).for_each(|(out_row, mat_row)| {
+            out_row.iter_mut().zip(mat_row).for_each(|(out_element, &element)| {
+                out_element.write(f64::from(element));
+            })
+        });
+        // SAFETY: The loop above wrote into all indexes.
+        unsafe { std::mem::transmute(out) }
+    }
+
     pub fn compute_rank(&self) -> usize {
         const EPS: f64 = 1e-9;
-        let mut mat_float = self.0.map(|a| a.map(f64::from));
+        let mut mat_float = self.convert_to_float();
         let mut rank = 0;
         let mut row_selected = [false; 64];
         for i in 0..64 {
@@ -85,19 +100,30 @@ impl Matrix {
 
     pub fn heavy_hash(&self, hash: Hash) -> Hash {
         let hash = hash.0;
-        let mut vec = [0u16; 64];
+        // SAFETY: An uninitialized MaybrUninit is always safe.
+        let mut vec: [MaybeUninit<u8>; 64] = unsafe { MaybeUninit::uninit().assume_init() };
         for i in 0..32 {
-            vec[2 * i] = (hash[i] >> 4) as u16;
-            vec[2 * i + 1] = (hash[i] & 0x0F) as u16;
+            vec[2 * i].write(hash[i] >> 4);
+            vec[2 * i + 1].write(hash[i] & 0x0F);
         }
+        // SAFETY: The loop above wrote into all indexes.
+        let vec: [u8; 64] = unsafe { std::mem::transmute(vec) };
 
-        // Matrix-vector multiplication, and convert to 4 bits.
-        let product: [u16; 64] = array_from_fn(|i| self.0[i].iter().zip(vec).map(|(&r, v)| r * v).sum::<u16>() >> 10);
+        // Matrix-vector multiplication, convert to 4 bits, and then combine back to 8 bits.
+        let mut product: [u8; 32] = array_from_fn(|i| {
+            let mut sum1 = 0;
+            let mut sum2 = 0;
+            for (j, &elem) in vec.iter().enumerate() {
+                sum1 += self.0[2 * i][j] * (elem as u16);
+                sum2 += self.0[2 * i + 1][j] * (elem as u16);
+            }
+            ((sum1 >> 10) << 4) as u8 | (sum2 >> 10) as u8
+        });
 
         // Concatenate 4 LSBs back to 8 bit xor with sum1
-        let data: [u8; 32] = array_from_fn(|i| hash[i] ^ ((product[i * 2] << 4) as u8 | product[2 * i + 1] as u8));
+        product.iter_mut().zip(hash).for_each(|(p, h)| *p ^= h);
         let mut hasher = HeavyHasher::new();
-        hasher.write(data);
+        hasher.write(product);
         hasher.finalize()
     }
 }
@@ -299,6 +325,7 @@ mod benches {
     use self::test::{black_box, Bencher};
     use super::{Matrix, XoShiRo256PlusPlus};
     use crate::Hash;
+    use rand::{thread_rng, Rng};
 
     #[bench]
     pub fn bench_compute_rank(bh: &mut Bencher) {
@@ -308,6 +335,20 @@ mod benches {
             for _ in 0..10 {
                 black_box(&mut matrix);
                 black_box(matrix.compute_rank());
+            }
+        });
+    }
+
+    #[bench]
+    pub fn bench_heavy_hash(bh: &mut Bencher) {
+        let mut generator = XoShiRo256PlusPlus::new(Hash([42; 32]));
+        let mut input = Hash(thread_rng().gen());
+        let mut matrix = Matrix::rand_matrix_no_rank_check(&mut generator);
+        bh.iter(|| {
+            for _ in 0..10 {
+                black_box(&mut matrix);
+                black_box(&mut input);
+                black_box(matrix.heavy_hash(input));
             }
         });
     }
