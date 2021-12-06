@@ -32,7 +32,7 @@ cargo install --git https://github.com/elichai/kaspa-miner.git
 ```
 
 ### From Binaries
-The [release page](https://github.com/elichai/kaspa-miner/releases) includes precompiled binaries for Linux, macOS and Windows.
+The [release page](https://github.com/tmrlvi/kaspa-miner/releases) includes precompiled binaries for Linux, and Windows (for the GPU version).
 
 
 # Usage
