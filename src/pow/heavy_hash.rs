@@ -23,7 +23,7 @@ impl Matrix {
     //     }
     // }
 
-    #[inline]
+    #[inline(always)]
     pub fn generate(hash: Hash) -> Self {
         let mut generator = XoShiRo256PlusPlus::new(hash);
         loop {
@@ -284,5 +284,26 @@ mod tests {
         let hash = Hash([42; 32]);
         let matrix = Matrix::generate(hash);
         assert_eq!(matrix, expected_matrix);
+    }
+}
+
+#[cfg(all(test, feature = "bench"))]
+mod benches {
+    extern crate test;
+
+    use self::test::{black_box, Bencher};
+    use super::{Matrix, XoShiRo256PlusPlus};
+    use crate::Hash;
+
+    #[bench]
+    pub fn bench_compute_rank(bh: &mut Bencher) {
+        let mut generator = XoShiRo256PlusPlus::new(Hash([42; 32]));
+        let mut matrix = Matrix::rand_matrix_no_rank_check(&mut generator);
+        bh.iter(|| {
+            for _ in 0..10 {
+                black_box(&mut matrix);
+                black_box(matrix.compute_rank());
+            }
+        });
     }
 }

@@ -1,3 +1,5 @@
+#![cfg_attr(all(test, feature = "bench"), feature(test))]
+
 use crate::cli::Opt;
 use crate::client::KaspadHandler;
 use crate::proto::NotifyBlockAddedRequestMessage;
