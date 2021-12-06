@@ -1,5 +1,3 @@
-use std::env;
-use std::path::Path;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tonic_build::configure()
@@ -8,6 +6,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .compile(
             &["proto/rpc.proto", "proto/p2p.proto", "proto/messages.proto"],
             &["proto"],
-        );
+        )?;
     Ok(())
 }
