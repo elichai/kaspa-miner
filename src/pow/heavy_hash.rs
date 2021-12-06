@@ -2,7 +2,7 @@ use crate::pow::{hasher::HeavyHasher, xoshiro::XoShiRo256PlusPlus};
 use crate::Hash;
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct Matrix([[u16; 64]; 64]);
+pub struct Matrix(pub [[u16; 64]; 64]);
 
 impl Matrix {
     // pub fn generate(hash: Hash) -> Self {

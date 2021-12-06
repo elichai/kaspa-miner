@@ -8,6 +8,8 @@ use crate::{
     target::{self, Uint256},
     Error,
 };
+use crate::gpu::GPUWork;
+use cust::prelude::SliceExt;
 
 mod hasher;
 mod heavy_hash;
@@ -15,9 +17,9 @@ mod xoshiro;
 
 #[derive(Clone)]
 pub struct State {
-    matrix: Arc<Matrix>,
-    pub nonce: u64,
-    target: Uint256,
+    pub matrix: Arc<Matrix>,
+    pub target: Uint256,
+    pub pow_hash_header: Vec<u8>,
     block: Arc<RpcBlock>,
     // PRE_POW_HASH || TIME || 32 zero byte padding; without NONCE
     hasher: PowHasher,
@@ -37,34 +39,47 @@ impl State {
         hasher.update(pre_pow_hash).update(header.timestamp.to_le_bytes()).update([0u8; 32]);
         let matrix = Arc::new(Matrix::generate(pre_pow_hash));
 
-        Ok(Self { matrix, nonce: 0, target, block: Arc::new(block), hasher })
+        Ok(
+            Self {
+                matrix, target,
+                pow_hash_header: [pre_pow_hash.0.as_slice(), header.timestamp.to_le_bytes().as_slice(), [0u8; 32].as_slice()].concat(),
+                block: Arc::new(block), hasher
+            }
+        )
     }
 
     #[inline(always)]
     // PRE_POW_HASH || TIME || 32 zero byte padding || NONCE
-    pub fn calculate_pow(&self) -> Uint256 {
+    pub fn calculate_pow(&self, nonce: u64) -> Uint256 {
         // Hasher already contains PRE_POW_HASH || TIME || 32 zero byte padding; so only the NONCE is missing
         let mut hasher = self.hasher.clone();
-        hasher.update(self.nonce.to_le_bytes());
+        hasher.update(nonce.to_le_bytes());
         let heavy_hash = self.matrix.heavy_hash(hasher.finalize());
         Uint256::from_le_bytes(heavy_hash.0)
     }
 
     #[inline(always)]
-    pub fn check_pow(&self) -> bool {
-        let pow = self.calculate_pow();
+    pub fn check_pow(&self, nonce: u64) -> bool {
+        let pow = self.calculate_pow(nonce);
         // The pow hash must be less or equal than the claimed target.
         pow <= self.target
     }
 
     #[inline(always)]
-    pub fn generate_block_if_pow(&self) -> Option<RpcBlock> {
-        self.check_pow().then(|| {
+    pub fn generate_block_if_pow(&self, nonce: u64) -> Option<RpcBlock> {
+        self.check_pow(nonce).then(|| {
             let mut block = (*self.block).clone();
             let header = &mut block.header.as_mut().expect("We checked that a header exists on creation");
-            header.nonce = self.nonce;
+            header.nonce = nonce;
             block
         })
+    }
+
+    #[inline(always)]
+    pub fn start_pow_gpu(&self, gpu_work: &mut GPUWork){
+        gpu_work.calculate_pow_hash(&self.pow_hash_header, None);
+        let mut matrix_gpu = self.matrix.clone().0.as_slice().as_dbuf().unwrap();
+        gpu_work.calculate_matrix_mul(&mut matrix_gpu);
     }
 }
 

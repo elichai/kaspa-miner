@@ -23,6 +23,7 @@ blake2b_simd = "1.0.0"
 structopt = { version = "0.3", features = ["color" ]}
 log = "0.4"
 env_logger = "0.9"
+cust = "0.2"
 
 [features]
 bench = []
@@ -33,3 +34,4 @@ codegen-units = 1
 
 [build-dependencies]
 tonic-build = { version = "0.6", default-features = false, features = ["prost", "transport"] }
+cc = "1.0"

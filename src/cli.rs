@@ -1,5 +1,7 @@
 use log::LevelFilter;
 use std::{net::IpAddr, str::FromStr};
+use std::cmp::min;
+use cust::device::Device;
 use structopt::StructOpt;
 
 use crate::Error;
@@ -28,7 +30,7 @@ pub struct Opt {
         short = "t",
         long = "threads",
         default_value = "0",
-        help = "Amount of miner threads to launch [default: number of logical cpus]"
+        help = "Amount of miner threads to launch. The first thread manages the GPU, if not disabled [default: number of logical cpus]"
     )]
     pub num_threads: u16,
     #[structopt(
@@ -36,6 +38,12 @@ pub struct Opt {
         help = "Mine even when kaspad says it is not synced, only useful when passing `--allow-submit-block-when-not-synced` to kaspad  [default: false]"
     )]
     pub mine_when_not_synced: bool,
+    #[structopt(
+    long = "gpu-threads",
+    default_value = "2021",
+    help = "How many GPUs to use [default: all]"
+    )]
+    pub gpu_threads: u16,
 }
 
 impl Opt {
@@ -53,6 +61,9 @@ impl Opt {
         if self.num_threads == 0 {
             self.num_threads = num_cpus::get_physical().try_into()?;
         }
+
+        let gpu_count = Device::num_devices().unwrap();
+        self.gpu_threads = min(gpu_count as u16, self.gpu_threads);
 
         Ok(())
     }

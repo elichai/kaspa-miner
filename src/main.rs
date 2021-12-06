@@ -1,3 +1,4 @@
+#![feature(in_band_lifetimes)]
 #![cfg_attr(all(test, feature = "bench"), feature(test))]
 
 use crate::cli::Opt;
@@ -6,6 +7,7 @@ use crate::proto::NotifyBlockAddedRequestMessage;
 use log::warn;
 use std::error::Error as StdError;
 use std::fmt;
+use cust::CudaFlags;
 use structopt::StructOpt;
 
 mod cli;
@@ -14,6 +16,7 @@ mod kaspad_messages;
 mod miner;
 mod pow;
 mod target;
+mod gpu;
 
 pub mod proto {
     tonic::include_proto!("protowire");
@@ -39,6 +42,7 @@ impl AsRef<[u8]> for Hash {
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
+    cust::init(CudaFlags::empty())?;
     let mut opt: Opt = Opt::from_args();
     opt.process()?;
     env_logger::builder().filter_level(opt.log_level()).parse_default_env().init();
@@ -50,7 +54,7 @@ async fn main() -> Result<(), Error> {
         client.client_send(NotifyBlockAddedRequestMessage {}).await?;
         client.client_get_block_template().await?;
 
-        client.listen(opt.num_threads).await?;
+        client.listen(opt.num_threads, opt.gpu_threads).await?;
         warn!("Disconnected from kaspad, retrying");
     }
 }

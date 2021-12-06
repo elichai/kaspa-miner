@@ -1,5 +1,5 @@
 use crate::proto::{KaspadMessage, RpcBlock};
-use crate::{pow, Error};
+use crate::{pow, Error, gpu};
 use log::{info, warn};
 use rand::{thread_rng, RngCore};
 use std::num::Wrapping;
@@ -10,7 +10,13 @@ use tokio::sync::mpsc::{self, error::TryRecvError, Receiver, Sender};
 use tokio::task::{self, JoinHandle};
 use tokio::time::MissedTickBehavior;
 
+use cust::prelude::*;
+use crate::gpu::GPUContext;
+
+use crate::target::Uint256;
+
 type MinerHandler = std::thread::JoinHandle<Result<(), Error>>;
+
 
 #[allow(dead_code)]
 pub struct MinerManager {
@@ -20,6 +26,7 @@ pub struct MinerManager {
     logger_handle: JoinHandle<()>,
     is_synced: bool,
     hashes_tried: Arc<AtomicU64>,
+    //runtime: Arc<Mutex<HashMap<&'static str, u128>>>,
 }
 
 impl Drop for MinerManager {
@@ -31,13 +38,17 @@ impl Drop for MinerManager {
 const LOG_RATE: Duration = Duration::from_secs(10);
 
 impl MinerManager {
-    pub fn new(send_channel: Sender<KaspadMessage>, num_threads: u16) -> Self {
+    pub fn new(send_channel: Sender<KaspadMessage>, num_threads: u16, gpu_threads: u16) -> Self {
         info!("launching: {} miners", num_threads);
         let hashes_tried = Arc::new(AtomicU64::new(0));
         let (handels, channels) = (0..num_threads)
-            .map(|_| {
+            .map(|i| {
                 let (send, recv) = mpsc::channel(1);
-                (Self::launch_miner(send_channel.clone(), recv, Arc::clone(&hashes_tried)), send)
+                if i < gpu_threads as u16 {
+                    (Self::launch_gpu_miner(send_channel.clone(), recv, Arc::clone(&hashes_tried), i), send)
+                } else {
+                    (Self::launch_miner(send_channel.clone(), recv, Arc::clone(&hashes_tried)), send)
+                }
             })
             .unzip();
         Self {
@@ -72,6 +83,98 @@ impl MinerManager {
         Ok(())
     }
 
+    fn launch_gpu_miner(
+        send_channel: Sender<KaspadMessage>,
+        mut block_channel: Receiver<Option<pow::State>>,
+        hashes_tried: Arc<AtomicU64>,
+        thid: u16,
+    ) -> MinerHandler {
+        std::thread::spawn(move | | {
+            info!("Spawned GPU Thread #{}", thid);
+
+            let device = Device::get_device(thid as u32)?;
+            let _ctx = Context::create_and_push(ContextFlags::MAP_HOST | ContextFlags::SCHED_AUTO, device);
+            let gpu_ctx = GPUContext::new(_ctx)?;
+            let mut gpu_work = gpu_ctx.get_worker()?;
+
+
+            let out_size: usize = gpu_work.get_output_size();
+            let mut hashes  = vec![[0u8; 32]; out_size];
+            let mut nonces= vec![0u64; out_size];
+
+            let mut state = None;
+
+            let mut has_results = false;
+            let mut found = false;
+            loop{
+                // check block header?
+                if state.is_none() {
+                    state = block_channel.blocking_recv().ok_or(TryRecvError::Disconnected)?;
+                } else if nonces[0] % 128 == 0 || found {
+                    has_results = false;
+                    found = false;
+                    match block_channel.try_recv() {
+                        Ok(new_state) => state = new_state,
+                        Err(TryRecvError::Empty) => (),
+                        Err(TryRecvError::Disconnected) => return Err(TryRecvError::Disconnected.into()),
+                    }
+                }
+                let state_ref = match state.as_mut() {
+                    Some(s) => s,
+                    None => continue,
+                };
+
+                gpu_work.sync()?;
+                state_ref.start_pow_gpu(&mut gpu_work);
+
+                gpu_work.copy_output_to(&mut hashes, &mut nonces)?;
+                if has_results {
+                    for i in 1..out_size {
+                        if Uint256::from_le_bytes(hashes[i]) <= state_ref.target {
+                            if let Some(block) = state_ref.generate_block_if_pow(nonces[i]) {
+                                let block_hash =
+                                    block.block_hash().expect("We just got it from the state, we should be able to hash it");
+                                send_channel.blocking_send(KaspadMessage::submit_block(block))?;
+                                info!("Found a block: {:x}", block_hash);
+                            } else {
+                                warn!("Something is wrong in GPU code!")
+                            }
+                        }
+                    }
+
+                    /*info!("Output should be: {}", state_ref.calculate_pow(nonces[0]).0[3]);
+                    info!("We got: {} (Nonces: {})", Uint256::from_le_bytes(hashes[0]).0[3], nonces[0]);
+                    if state_ref.calculate_pow(nonces[0]).0[0] != Uint256::from_le_bytes(hashes[0]).0[0] {
+                        gpu_work.sync()?;
+                        let nonce_vec = vec![nonces[0]; gpu::GPU_THREADS];
+                        gpu_work.calculate_pow_hash(&state_ref.pow_hash_header, Some(&nonce_vec));
+                        gpu_work.sync()?;
+                        gpu_work.calculate_matrix_mul(&mut state_ref.matrix.clone().0.as_slice().as_dbuf().unwrap());
+                        gpu_work.sync()?;
+                        gpu_work.calculate_heavy_hash();
+                        gpu_work.sync()?;
+                        let mut hashes2  = vec![[0u8; 32]; out_size];
+                        let mut nonces2= vec![0u64; out_size];
+                        gpu_work.copy_output_to(&mut hashes2, &mut nonces2);
+                        assert!(state_ref.calculate_pow(nonces[0]).0[0] == Uint256::from_le_bytes(hashes2[0]).0[0]);
+                        assert!(nonces2[0] == nonces[0]);
+                        assert!(hashes2[0] == hashes[0]);
+                        assert!(false);
+                    }*/
+
+
+                    hashes_tried.fetch_add(gpu::GPU_THREADS.try_into().unwrap(), Ordering::AcqRel);
+                }
+
+                gpu_work.calculate_heavy_hash();
+                has_results = true;
+
+
+            }
+        })
+    }
+
+
     fn launch_miner(
         send_channel: Sender<KaspadMessage>,
         mut block_channel: Receiver<Option<pow::State>>,
@@ -88,8 +191,7 @@ impl MinerManager {
                     Some(s) => s,
                     None => continue,
                 };
-                state_ref.nonce = nonce.0;
-                if let Some(block) = state_ref.generate_block_if_pow() {
+                if let Some(block) = state_ref.generate_block_if_pow(nonce.0) {
                     let block_hash =
                         block.block_hash().expect("We just got it from the state, we should be able to hash it");
                     send_channel.blocking_send(KaspadMessage::submit_block(block))?;
