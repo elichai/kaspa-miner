@@ -72,7 +72,7 @@ impl Matrix {
                     }
                 }
             } else {
-                return false
+                return false;
             }
         }
         true
