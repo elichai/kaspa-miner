@@ -66,12 +66,6 @@ extern "C" {
         // assuming header_len is 72
         int nonceId = threadIdx.x + blockIdx.x*blockDim.x;
         if (nonceId < nonces_len) {
-            /*             // Generate random number (maybe overkill?)
-                           uint8_t long_seed[8] = {0};
-                           memcpy(long_seed, (uint8_t *)(&seed), 4);
-                           memcpy(long_seed+4, (uint8_t *)(&nonceId), 4);
-                           hash((uint8_t *)(nonces + nonceId), 8, (uint8_t *)(&long_seed), 4, 144, 0x06); // sha3_226
-            */
             if (generate) nonces[nonceId] = curand(states + nonceId);
             uint8_t input[216] = {
                 0x01, 0x88, // left_encode(136)                  - cSHAKE256 specific

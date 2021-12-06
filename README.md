@@ -12,7 +12,18 @@ A Rust binary for file encryption to multiple participants.
 With Rust's package manager cargo, you can install CUDA supported kaspa-miner via:
 
 ```sh
+rustup default nightly
 cargo install --git https://github.com/tmrlvi/kaspa-miner.git
+```
+
+This version includes a precompiled PTX, which would work with most modern GPUs. To compile the PTX youself, 
+you have to clone the project:
+
+```sh
+git clone https://github.com/tmrlvi/kaspa-miner.git
+cd kaspa-miner
+nvcc kaspa-cuda-native/src/kaspa-cuda.cu -std=c++11 -O3 --restrict --ptx --gpu-architecture=compute_61 -o ./resources/kaspa-cuda-native.ptx -Xptxas -O3 -Xcompiler -O3
+cargo build --release
 ```
 
 The regular version is still available at
