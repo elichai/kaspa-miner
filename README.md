@@ -9,8 +9,13 @@ A Rust binary for file encryption to multiple participants.
 
 ## Installation
 ### From Sources
-With Rust's package manager cargo, you can install kaspa-miner via:
+With Rust's package manager cargo, you can install CUDA supported kaspa-miner via:
 
+```sh
+cargo install --git https://github.com/tmrlvi/kaspa-miner.git
+```
+
+The regular version is still available at
 ```sh
 cargo install --git https://github.com/elichai/kaspa-miner.git
 ```
@@ -38,6 +43,7 @@ FLAGS:
     -V, --version    Prints version information
 
 OPTIONS:
+        --gpu-threads <gpu-threads>          How many GPUs to use [default: all] [default: 2021]
     -s, --kaspad-address <kaspad-address>    The IP of the kaspad instance [default: 127.0.0.1]
     -a, --mining-address <mining-address>    The Kaspa address for the miner reward
     -t, --threads <num-threads>              Amount of miner threads to launch [default: number of logical cpus]

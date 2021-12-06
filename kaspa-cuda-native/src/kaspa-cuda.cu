@@ -73,7 +73,7 @@ extern "C" {
                            hash((uint8_t *)(nonces + nonceId), 8, (uint8_t *)(&long_seed), 4, 144, 0x06); // sha3_226
             */
             if (generate) nonces[nonceId] = curand(states + nonceId);
-            __restrict__ uint8_t input[216] = {
+            uint8_t input[216] = {
                 0x01, 0x88, // left_encode(136)                  - cSHAKE256 specific
                 0x01, 0x00, // left_encode(0)                    - No Domain
                 0x01, 0x78, // left_encode customization string length
@@ -92,7 +92,7 @@ extern "C" {
         assert(blockDim.x < BLOCKDIM);
         uint64_t dataId = threadIdx.x + blockIdx.x*blockDim.x;
         if (dataId < data_len) {
-            __restrict__ uint8_t input[168] = {
+            uint8_t input[168] = {
                 0x01, 0x88, // left_encode(136)                  - cSHAKE256 specific
                 0x01, 0x00, // left_encode(0)                    - No Domain
                 0x01, 0x48, // left_encode customization string length
