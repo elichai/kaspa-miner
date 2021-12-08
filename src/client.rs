@@ -38,8 +38,8 @@ impl KaspadHandler {
         self.client_send(GetBlockTemplateRequestMessage { pay_address: self.miner_address.clone() }).await
     }
 
-    pub async fn listen(&mut self, num_threads: u16, gpu_threads: u16) -> Result<(), Error> {
-        let mut miner = MinerManager::new(self.send_channel.clone(), num_threads, gpu_threads);
+    pub async fn listen(&mut self, num_threads: u16, gpu_threads: u16, workload: usize) -> Result<(), Error> {
+        let mut miner = MinerManager::new(self.send_channel.clone(), num_threads, gpu_threads, workload);
         while let Some(msg) = self.stream.message().await? {
             match msg.payload {
                 Some(payload) => self.handle_message(payload, &mut miner).await?,

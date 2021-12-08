@@ -54,7 +54,7 @@ async fn main() -> Result<(), Error> {
         client.client_send(NotifyBlockAddedRequestMessage {}).await?;
         client.client_get_block_template().await?;
 
-        client.listen(opt.num_threads, opt.gpu_threads).await?;
+        client.listen(opt.num_threads, opt.gpu_threads, opt.workload).await?;
         warn!("Disconnected from kaspad, retrying");
     }
 }

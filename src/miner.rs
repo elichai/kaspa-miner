@@ -1,5 +1,5 @@
 use crate::proto::{KaspadMessage, RpcBlock};
-use crate::{pow, Error, gpu};
+use crate::{pow, Error};
 use log::{info, warn};
 use rand::{thread_rng, RngCore};
 use std::num::Wrapping;
@@ -38,14 +38,14 @@ impl Drop for MinerManager {
 const LOG_RATE: Duration = Duration::from_secs(10);
 
 impl MinerManager {
-    pub fn new(send_channel: Sender<KaspadMessage>, num_threads: u16, gpu_threads: u16) -> Self {
+    pub fn new(send_channel: Sender<KaspadMessage>, num_threads: u16, gpu_threads: u16, workload: usize) -> Self {
         info!("launching: {} miners", num_threads);
         let hashes_tried = Arc::new(AtomicU64::new(0));
         let (handels, channels) = (0..num_threads)
             .map(|i| {
                 let (send, recv) = mpsc::channel(1);
                 if i < gpu_threads as u16 {
-                    (Self::launch_gpu_miner(send_channel.clone(), recv, Arc::clone(&hashes_tried), i), send)
+                    (Self::launch_gpu_miner(send_channel.clone(), recv, Arc::clone(&hashes_tried), i, workload), send)
                 } else {
                     (Self::launch_miner(send_channel.clone(), recv, Arc::clone(&hashes_tried)), send)
                 }
@@ -88,6 +88,7 @@ impl MinerManager {
         mut block_channel: Receiver<Option<pow::State>>,
         hashes_tried: Arc<AtomicU64>,
         thid: u16,
+        workload: usize
     ) -> MinerHandler {
         std::thread::spawn(move | | {
             info!("Spawned GPU Thread #{}", thid);
@@ -95,7 +96,7 @@ impl MinerManager {
             let device = Device::get_device(thid as u32)?;
             let _ctx = Context::create_and_push(ContextFlags::MAP_HOST | ContextFlags::SCHED_AUTO, device);
             let gpu_ctx = GPUContext::new(_ctx)?;
-            let mut gpu_work = gpu_ctx.get_worker()?;
+            let mut gpu_work = gpu_ctx.get_worker(workload)?;
 
 
             let out_size: usize = gpu_work.get_output_size();
@@ -146,7 +147,7 @@ impl MinerManager {
                     info!("We got: {} (Nonces: {})", Uint256::from_le_bytes(hashes[0]).0[3], nonces[0]);
                     if state_ref.calculate_pow(nonces[0]).0[0] != Uint256::from_le_bytes(hashes[0]).0[0] {
                         gpu_work.sync()?;
-                        let nonce_vec = vec![nonces[0]; gpu::GPU_THREADS];
+                        let nonce_vec = vec![nonces[0]; workload];
                         gpu_work.calculate_pow_hash(&state_ref.pow_hash_header, Some(&nonce_vec));
                         gpu_work.sync()?;
                         gpu_work.calculate_matrix_mul(&mut state_ref.matrix.clone().0.as_slice().as_dbuf().unwrap());
@@ -163,7 +164,7 @@ impl MinerManager {
                     }*/
 
 
-                    hashes_tried.fetch_add(gpu::GPU_THREADS.try_into().unwrap(), Ordering::AcqRel);
+                    hashes_tried.fetch_add(workload.try_into().unwrap(), Ordering::AcqRel);
                 }
 
                 gpu_work.calculate_heavy_hash();

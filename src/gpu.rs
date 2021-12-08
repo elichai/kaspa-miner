@@ -8,7 +8,6 @@ use rand::Fill;
 static PTX: &str = include_str!("../resources/kaspa-cuda-native.ptx");
 
 // Get this from the device!
-pub const GPU_THREADS: usize = 200*1024;
 
 type CurandDirectionVectors64 = [u64; 64];
 
@@ -25,10 +24,10 @@ pub struct Kernel<'kernel> {
 }
 
 impl Kernel<'kernel> {
-    pub fn new(module: &'kernel Module, name: &str) -> Result<Kernel<'kernel>, Error> {
+    pub fn new(module: &'kernel Module, name: &str, workload: usize) -> Result<Kernel<'kernel>, Error> {
         let func = module.get_function(name).or_else(|e| { error!("Error loading function: {}", e); Result::Err(e)})?;
         let (_, block_size) = func.suggested_launch_configuration(0, 0.into())?;
-        let grid_size = (GPU_THREADS as u32 + block_size - 1) / block_size;
+        let grid_size = (workload as u32 + block_size - 1) / block_size;
         Ok(
             Self { func, block_size, grid_size }
         )
@@ -37,6 +36,7 @@ impl Kernel<'kernel> {
 
 
 pub struct GPUWork<'gpu> {
+    workload: usize,
     stream: Stream,
     rand_state: DeviceBuffer<CurandStateSobol64>,
 
@@ -62,41 +62,41 @@ impl GPUContext{
         Ok(Self{ context, module})
     }
 
-    pub fn get_worker(&self) -> Result<GPUWork, Error>{
-        GPUWork::new(self)
+    pub fn get_worker(&self, workload: usize) -> Result<GPUWork, Error>{
+        GPUWork::new(self, workload)
     }
 }
 
 impl GPUWork<'gpu> {
-    pub fn new(context: &'gpu GPUContext) -> Result<Self, Error> {
+    pub fn new(context: &'gpu GPUContext, workload: usize) -> Result<Self, Error> {
         let stream = Stream::new(StreamFlags::NON_BLOCKING, None)?;
 
-        let rand_init = Kernel::new(&context.module, "init")?;
-        let pow_hash_kernel = Kernel::new(&context.module, "pow_cshake")?;
-        let matrix_mul_kernel = Kernel::new(&context.module, "matrix_mul")?;
-        let heavy_hash_kernel = Kernel::new(&context.module, "heavy_hash_cshake")?;
+        let rand_init = Kernel::new(&context.module, "init", workload)?;
+        let pow_hash_kernel = Kernel::new(&context.module, "pow_cshake", workload)?;
+        let matrix_mul_kernel = Kernel::new(&context.module, "matrix_mul", workload)?;
+        let heavy_hash_kernel = Kernel::new(&context.module, "heavy_hash_cshake", workload)?;
 
         let mut rand_state = unsafe {
-            DeviceBuffer::<CurandStateSobol64>::zeroed(GPU_THREADS).unwrap()
+            DeviceBuffer::<CurandStateSobol64>::zeroed(workload).unwrap()
         };
 
-        let nonces_buff = vec![0u64; GPU_THREADS].as_slice().as_dbuf()?;
-        let pow_hashes_buff = vec![[0u8; 32]; GPU_THREADS].as_slice().as_dbuf()?;
-        let matrix_mul_out_buff = vec![[0u8; 32]; GPU_THREADS].as_slice().as_dbuf()?;
+        let nonces_buff = vec![0u64; workload].as_slice().as_dbuf()?;
+        let pow_hashes_buff = vec![[0u8; 32]; workload].as_slice().as_dbuf()?;
+        let matrix_mul_out_buff = vec![[0u8; 32]; workload].as_slice().as_dbuf()?;
 
         let final_hashes_buff = vec![[0u8; 32]; heavy_hash_kernel.grid_size as usize].as_slice().as_dbuf()?;
         let final_nonces_buff = vec![0u64; heavy_hash_kernel.grid_size as usize].as_slice().as_dbuf()?;
 
         info!("Generating initial seed. This may take some time.");
         let func = rand_init.func;
-        let mut seeds = vec![1u64; 64*GPU_THREADS];
+        let mut seeds = vec![1u64; 64*workload];
         seeds.try_fill(&mut rand::thread_rng())?;
         unsafe {
             launch!(
                 func<<<rand_init.grid_size, rand_init.block_size, 0, stream>>>(
                     seeds.as_slice().as_dbuf()?.as_device_ptr(),
                     rand_state.as_device_ptr(),
-                    GPU_THREADS,
+                    workload,
                 )
             )?;
         }
@@ -104,7 +104,7 @@ impl GPUWork<'gpu> {
         info!("GPU Initialized");
         Ok(
             Self {
-                stream, rand_state, nonces_buff,
+                workload, stream, rand_state, nonces_buff,
                 pow_hashes_buff, matrix_mul_out_buff, final_hashes_buff, final_nonces_buff,
                 pow_hash_kernel, matrix_mul_kernel, heavy_hash_kernel
             }

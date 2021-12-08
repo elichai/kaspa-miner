@@ -44,6 +44,12 @@ pub struct Opt {
     help = "How many GPUs to use [default: all]"
     )]
     pub gpu_threads: u16,
+    #[structopt(
+    long = "workload",
+    default_value = "204800",
+    help = "How many nonces to generate at once"
+    )]
+    pub workload: usize,
 }
 
 impl Opt {
