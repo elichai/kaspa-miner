@@ -93,10 +93,10 @@ impl MinerManager {
         std::thread::spawn(move | | {
             info!("Spawned GPU Thread #{}", thid);
 
-            let device = Device::get_device(thid as u32)?;
+            let device = Device::get_device(thid as u32).unwrap();
             let _ctx = Context::create_and_push(ContextFlags::MAP_HOST | ContextFlags::SCHED_AUTO, device);
-            let gpu_ctx = GPUContext::new(_ctx)?;
-            let mut gpu_work = gpu_ctx.get_worker(workload)?;
+            let gpu_ctx = GPUContext::new(_ctx).unwrap();
+            let mut gpu_work = gpu_ctx.get_worker(workload).unwrap();
 
 
             let out_size: usize = gpu_work.get_output_size();
@@ -110,7 +110,7 @@ impl MinerManager {
             loop{
                 // check block header?
                 if state.is_none() {
-                    state = block_channel.blocking_recv().ok_or(TryRecvError::Disconnected)?;
+                    state = block_channel.blocking_recv().ok_or(TryRecvError::Disconnected).unwrap();
                 } else if nonces[0] % 128 == 0 || found {
                     has_results = false;
                     found = false;
@@ -125,17 +125,17 @@ impl MinerManager {
                     None => continue,
                 };
 
-                gpu_work.sync()?;
+                gpu_work.sync().unwrap();
                 state_ref.start_pow_gpu(&mut gpu_work);
 
-                gpu_work.copy_output_to(&mut hashes, &mut nonces)?;
+                gpu_work.copy_output_to(&mut hashes, &mut nonces).unwrap();
                 if has_results {
                     for i in 1..out_size {
                         if Uint256::from_le_bytes(hashes[i]) <= state_ref.target {
                             if let Some(block) = state_ref.generate_block_if_pow(nonces[i]) {
                                 let block_hash =
                                     block.block_hash().expect("We just got it from the state, we should be able to hash it");
-                                send_channel.blocking_send(KaspadMessage::submit_block(block))?;
+                                send_channel.blocking_send(KaspadMessage::submit_block(block)).unwrap();
                                 info!("Found a block: {:x}", block_hash);
                             } else {
                                 warn!("Something is wrong in GPU code!")
