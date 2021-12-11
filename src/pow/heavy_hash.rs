@@ -99,7 +99,7 @@ impl Matrix {
     }
 
     pub fn heavy_hash(&self, hash: Hash) -> Hash {
-        let hash = hash.0;
+        let hash = hash.to_le_bytes();
         // SAFETY: An uninitialized MaybrUninit is always safe.
         let mut vec: [MaybeUninit<u8>; 64] = unsafe { MaybeUninit::uninit().assume_init() };
         for i in 0..32 {
@@ -122,7 +122,7 @@ impl Matrix {
 
         // Concatenate 4 LSBs back to 8 bit xor with sum1
         product.iter_mut().zip(hash).for_each(|(p, h)| *p ^= h);
-        HeavyHasher::hash(Hash(product))
+        HeavyHasher::hash(Hash::from_le_bytes(product))
     }
 }
 
@@ -149,7 +149,7 @@ mod tests {
         let zero = Matrix([[0; 64]; 64]);
         assert_eq!(zero.compute_rank(), 0);
         let mut matrix = zero;
-        let mut gen = XoShiRo256PlusPlus::new(Hash([42; 32]));
+        let mut gen = XoShiRo256PlusPlus::new(Hash::from_le_bytes([42; 32]));
         matrix.0.iter_mut().for_each(|row| {
             row.iter_mut().for_each(|val| {
                 *val = gen.u64() as u16;
@@ -163,7 +163,7 @@ mod tests {
 
     #[test]
     fn test_heavy_hash() {
-        let expected_hash = Hash([
+        let expected_hash = Hash::from_le_bytes([
             135, 104, 159, 55, 153, 67, 234, 249, 183, 71, 92, 169, 83, 37, 104, 119, 114, 191, 204, 104, 252, 120,
             153, 202, 235, 68, 9, 236, 69, 144, 195, 37,
         ]);
@@ -234,7 +234,7 @@ mod tests {
             [8, 4, 15, 9, 14, 9, 5, 8, 8, 10, 5, 15, 9, 8, 12, 5, 11, 10, 2, 12, 13, 1, 0, 2, 6, 13, 11, 9, 12, 0, 5, 0, 11, 5, 14, 12, 3, 4, 2, 10, 3, 12, 5, 15, 4, 8, 14, 1, 0, 13, 9, 5, 2, 4, 13, 8, 2, 5, 8, 9, 15, 3, 5, 5],
             [0, 3, 3, 4, 6, 5, 5, 1, 3, 2, 14, 5, 10, 7, 15, 11, 7, 13, 15, 4, 0, 12, 9, 15, 12, 0, 3, 1, 14, 1, 12, 9, 13, 8, 9, 15, 12, 3, 5, 11, 3, 11, 4, 1, 9, 4, 13, 7, 4, 10, 6, 14, 13, 0, 9, 11, 15, 15, 3, 3, 13, 15, 10, 15],
         ]);
-        let hash = Hash([
+        let hash = Hash::from_le_bytes([
             82, 46, 212, 218, 28, 192, 143, 92, 213, 66, 86, 63, 245, 241, 155, 189, 73, 159, 229, 180, 202, 105, 159,
             166, 109, 172, 128, 136, 169, 195, 97, 41,
         ]);
@@ -309,7 +309,7 @@ mod tests {
             [10, 12, 2, 14, 14, 1, 11, 8, 3, 7, 13, 7, 2, 1, 14, 13, 7, 6, 15, 8, 15, 12, 13, 10, 11, 15, 4, 2, 6, 13, 12, 3, 2, 10, 15, 14, 10, 11, 8, 14, 9, 3, 12, 9, 15, 2, 14, 14, 5, 13, 7, 6, 2, 1, 1, 4, 1, 0, 13, 10, 1, 0, 2, 9],
             [10, 5, 11, 14, 12, 1, 12, 7, 12, 8, 10, 5, 6, 10, 0, 7, 5, 6, 11, 11, 13, 12, 0, 13, 0, 6, 11, 0, 14, 4, 2, 1, 12, 7, 1, 10, 7, 15, 5, 3, 14, 15, 1, 3, 1, 2, 10, 4, 11, 8, 2, 11, 2, 5, 5, 4, 15, 5, 10, 3, 1, 7, 2, 14],
         ]);
-        let hash = Hash([42; 32]);
+        let hash = Hash::from_le_bytes([42; 32]);
         let matrix = Matrix::generate(hash);
         assert_eq!(matrix, expected_matrix);
     }
@@ -326,7 +326,7 @@ mod benches {
 
     #[bench]
     pub fn bench_compute_rank(bh: &mut Bencher) {
-        let mut generator = XoShiRo256PlusPlus::new(Hash([42; 32]));
+        let mut generator = XoShiRo256PlusPlus::new(Hash::from_le_bytes([42; 32]));
         let mut matrix = Matrix::rand_matrix_no_rank_check(&mut generator);
         bh.iter(|| {
             for _ in 0..10 {
@@ -338,8 +338,8 @@ mod benches {
 
     #[bench]
     pub fn bench_heavy_hash(bh: &mut Bencher) {
-        let mut generator = XoShiRo256PlusPlus::new(Hash([42; 32]));
-        let mut input = Hash(thread_rng().gen());
+        let mut generator = XoShiRo256PlusPlus::new(Hash::from_le_bytes([42; 32]));
+        let mut input = Hash::new(thread_rng().gen());
         let mut matrix = Matrix::rand_matrix_no_rank_check(&mut generator);
         bh.iter(|| {
             for _ in 0..10 {

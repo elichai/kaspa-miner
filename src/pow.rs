@@ -45,8 +45,7 @@ impl State {
     pub fn calculate_pow(&self) -> Uint256 {
         // Hasher already contains PRE_POW_HASH || TIME || 32 zero byte padding; so only the NONCE is missing
         let hash = self.hasher.finalize_with_nonce(self.nonce);
-        let heavy_hash = self.matrix.heavy_hash(hash);
-        Uint256::from_le_bytes(heavy_hash.0)
+        self.matrix.heavy_hash(hash)
     }
 
     #[inline(always)]
@@ -117,6 +116,7 @@ pub fn serialize_header<H: Hasher>(hasher: &mut H, header: &RpcBlockHeader, for_
     hasher.update(hash);
 }
 
+#[allow(dead_code)] // False Positive: https://github.com/rust-lang/rust/issues/88900
 #[derive(Debug)]
 enum FromHexError {
     OddLength,
@@ -358,7 +358,7 @@ mod tests {
         serialize_header(&mut buf, &header, true);
         assert_eq!(&expected_res[..], &buf.0);
 
-        let expected_hash = Hash([
+        let expected_hash = Hash::from_le_bytes([
             85, 146, 211, 217, 138, 239, 47, 85, 152, 59, 58, 16, 4, 149, 129, 179, 172, 226, 174, 233, 160, 96, 202,
             54, 6, 225, 64, 142, 106, 0, 110, 137,
         ]);

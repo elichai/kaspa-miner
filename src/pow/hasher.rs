@@ -27,9 +27,7 @@ impl PowHasher {
     #[inline(always)]
     pub(super) fn new(pre_pow_hash: Hash, timestamp: u64) -> Self {
         let mut start = Self::INITIAL_STATE;
-        for (pre_pow_word, state_word) in
-            pre_pow_hash.0.chunks_exact(8).map(|v| u64::from_le_bytes(v.try_into().unwrap())).zip(start.iter_mut())
-        {
+        for (&pre_pow_word, state_word) in pre_pow_hash.0.iter().zip(start.iter_mut()) {
             *state_word ^= pre_pow_word;
         }
         start[4] ^= timestamp;
@@ -40,11 +38,7 @@ impl PowHasher {
     pub(super) fn finalize_with_nonce(mut self, nonce: u64) -> Hash {
         self.0[9] ^= nonce;
         keccak::f1600(&mut self.0);
-        let mut hash = [0u8; 32];
-        for (buf, word) in hash.chunks_exact_mut(8).zip(&self.0) {
-            buf.copy_from_slice(&word.to_le_bytes());
-        }
-        Hash(hash)
+        Hash::new(self.0[..4].try_into().unwrap())
     }
 }
 
@@ -63,17 +57,11 @@ impl HeavyHasher {
     #[inline(always)]
     pub(super) fn hash(in_hash: Hash) -> Hash {
         let mut state = Self::INITIAL_STATE;
-        for (pre_pow_word, state_word) in
-            in_hash.0.chunks_exact(8).map(|v| u64::from_le_bytes(v.try_into().unwrap())).zip(state.iter_mut())
-        {
+        for (&pre_pow_word, state_word) in in_hash.0.iter().zip(state.iter_mut()) {
             *state_word ^= pre_pow_word;
         }
         keccak::f1600(&mut state);
-        let mut hash = [0u8; 32];
-        for (buf, word) in hash.chunks_exact_mut(8).zip(&state) {
-            buf.copy_from_slice(&word.to_le_bytes());
-        }
-        Hash(hash)
+        Hash::new(state[..4].try_into().unwrap())
     }
 }
 
@@ -89,9 +77,7 @@ impl HeaderHasher {
 
     #[inline(always)]
     pub fn finalize(self) -> Hash {
-        let mut out = [0u8; 32];
-        out.copy_from_slice(self.0.finalize().as_bytes());
-        Hash(out)
+        Hash::from_le_bytes(self.0.finalize().as_bytes().try_into().expect("this is 32 bytes"))
     }
 }
 
@@ -120,29 +106,29 @@ mod tests {
     fn test_pow_hash() {
         let timestamp: u64 = 5435345234;
         let nonce: u64 = 432432432;
-        let pre_pow_hash = Hash([42; 32]);
+        let pre_pow_hash = Hash::from_le_bytes([42; 32]);
         let hasher = PowHasher::new(pre_pow_hash, timestamp);
         let hash1 = hasher.finalize_with_nonce(nonce);
 
         let hasher = CShake256::new(PROOF_OF_WORK_DOMAIN)
-            .chain(pre_pow_hash)
+            .chain(pre_pow_hash.to_le_bytes())
             .chain(timestamp.to_le_bytes())
             .chain([0u8; 32])
             .chain(nonce.to_le_bytes());
         let mut hash2 = [0u8; 32];
         hasher.finalize_xof().read(&mut hash2);
-        assert_eq!(Hash(hash2), hash1);
+        assert_eq!(Hash::from_le_bytes(hash2), hash1);
     }
 
     #[test]
     fn test_heavy_hash() {
-        let val = Hash([42; 32]);
+        let val = Hash::from_le_bytes([42; 32]);
         let hash1 = HeavyHasher::hash(val);
 
-        let hasher = CShake256::new(HEAVY_HASH_DOMAIN).chain(val);
+        let hasher = CShake256::new(HEAVY_HASH_DOMAIN).chain(val.to_le_bytes());
         let mut hash2 = [0u8; 32];
         hasher.finalize_xof().read(&mut hash2);
-        assert_eq!(Hash(hash2), hash1);
+        assert_eq!(Hash::from_le_bytes(hash2), hash1);
     }
 }
 
@@ -158,7 +144,7 @@ mod benches {
     pub fn bench_pow_hash(bh: &mut Bencher) {
         let timestamp: u64 = 5435345234;
         let mut nonce: u64 = 432432432;
-        let pre_pow_hash = Hash([42; 32]);
+        let pre_pow_hash = Hash::from_le_bytes([42; 32]);
         let mut hasher = PowHasher::new(pre_pow_hash, timestamp);
 
         bh.iter(|| {
@@ -172,7 +158,7 @@ mod benches {
 
     #[bench]
     pub fn bench_heavy_hash(bh: &mut Bencher) {
-        let mut data = Hash([42; 32]);
+        let mut data = Hash::from_le_bytes([42; 32]);
         bh.iter(|| {
             for _ in 0..100 {
                 black_box(&mut data);
