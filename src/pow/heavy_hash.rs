@@ -122,9 +122,7 @@ impl Matrix {
 
         // Concatenate 4 LSBs back to 8 bit xor with sum1
         product.iter_mut().zip(hash).for_each(|(p, h)| *p ^= h);
-        let mut hasher = HeavyHasher::new();
-        hasher.write(product);
-        hasher.finalize()
+        HeavyHasher::hash(Hash(product))
     }
 }
 
@@ -142,7 +140,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::pow::hasher::PowHasher;
     use crate::pow::heavy_hash::Matrix;
     use crate::pow::xoshiro::XoShiRo256PlusPlus;
     use crate::Hash;
@@ -237,10 +234,10 @@ mod tests {
             [8, 4, 15, 9, 14, 9, 5, 8, 8, 10, 5, 15, 9, 8, 12, 5, 11, 10, 2, 12, 13, 1, 0, 2, 6, 13, 11, 9, 12, 0, 5, 0, 11, 5, 14, 12, 3, 4, 2, 10, 3, 12, 5, 15, 4, 8, 14, 1, 0, 13, 9, 5, 2, 4, 13, 8, 2, 5, 8, 9, 15, 3, 5, 5],
             [0, 3, 3, 4, 6, 5, 5, 1, 3, 2, 14, 5, 10, 7, 15, 11, 7, 13, 15, 4, 0, 12, 9, 15, 12, 0, 3, 1, 14, 1, 12, 9, 13, 8, 9, 15, 12, 3, 5, 11, 3, 11, 4, 1, 9, 4, 13, 7, 4, 10, 6, 14, 13, 0, 9, 11, 15, 15, 3, 3, 13, 15, 10, 15],
         ]);
-        let mut hasher = PowHasher::new();
-        hasher.write(&[0xC1, 0xEC, 0xFD, 0xFC]);
-        let hash = hasher.finalize();
-
+        let hash = Hash([
+            82, 46, 212, 218, 28, 192, 143, 92, 213, 66, 86, 63, 245, 241, 155, 189, 73, 159, 229, 180, 202, 105, 159,
+            166, 109, 172, 128, 136, 169, 195, 97, 41,
+        ]);
         assert_eq!(test_matrix.heavy_hash(hash), expected_hash);
     }
     #[test]

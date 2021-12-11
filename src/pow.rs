@@ -34,8 +34,7 @@ impl State {
         serialize_header(&mut hasher, header, true);
         let pre_pow_hash = hasher.finalize();
         // PRE_POW_HASH || TIME || 32 zero byte padding || NONCE
-        let mut hasher = PowHasher::new();
-        hasher.update(pre_pow_hash).update(header.timestamp.to_le_bytes()).update([0u8; 32]);
+        let hasher = PowHasher::new(pre_pow_hash, header.timestamp as u64);
         let matrix = Arc::new(Matrix::generate(pre_pow_hash));
 
         Ok(Self { id, matrix, nonce: 0, target, block: Arc::new(block), hasher })
@@ -45,9 +44,8 @@ impl State {
     // PRE_POW_HASH || TIME || 32 zero byte padding || NONCE
     pub fn calculate_pow(&self) -> Uint256 {
         // Hasher already contains PRE_POW_HASH || TIME || 32 zero byte padding; so only the NONCE is missing
-        let mut hasher = self.hasher.clone();
-        hasher.update(self.nonce.to_le_bytes());
-        let heavy_hash = self.matrix.heavy_hash(hasher.finalize());
+        let hash = self.hasher.finalize_with_nonce(self.nonce);
+        let heavy_hash = self.matrix.heavy_hash(hash);
         Uint256::from_le_bytes(heavy_hash.0)
     }
 
