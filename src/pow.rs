@@ -12,6 +12,7 @@ use crate::{
 mod hasher;
 mod heavy_hash;
 mod xoshiro;
+mod keccak;
 
 #[derive(Clone)]
 pub struct State {

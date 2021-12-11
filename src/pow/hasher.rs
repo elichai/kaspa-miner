@@ -37,7 +37,7 @@ impl PowHasher {
     #[inline(always)]
     pub(super) fn finalize_with_nonce(mut self, nonce: u64) -> Hash {
         self.0[9] ^= nonce;
-        keccak::f1600(&mut self.0);
+        super::keccak::f1600(&mut self.0);
         Hash::new(self.0[..4].try_into().unwrap())
     }
 }
@@ -60,7 +60,7 @@ impl HeavyHasher {
         for (&pre_pow_word, state_word) in in_hash.0.iter().zip(state.iter_mut()) {
             *state_word ^= pre_pow_word;
         }
-        keccak::f1600(&mut state);
+        super::keccak::f1600(&mut state);
         Hash::new(state[..4].try_into().unwrap())
     }
 }
