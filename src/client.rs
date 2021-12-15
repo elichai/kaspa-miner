@@ -38,8 +38,8 @@ impl KaspadHandler {
         self.client_send(GetBlockTemplateRequestMessage { pay_address: self.miner_address.clone() }).await
     }
 
-    pub async fn listen(&mut self, num_threads: u16, gpu_threads: u16, workload: usize) -> Result<(), Error> {
-        let mut miner = MinerManager::new(self.send_channel.clone(), num_threads, gpu_threads, workload);
+    pub async fn listen(&mut self, num_threads: u16, cuda_device: Vec<u16>, workload: usize) -> Result<(), Error> {
+        let mut miner = MinerManager::new(self.send_channel.clone(), num_threads, cuda_device, workload);
         while let Some(msg) = self.stream.message().await? {
             match msg.payload {
                 Some(payload) => self.handle_message(payload, &mut miner).await?,
@@ -59,9 +59,12 @@ impl KaspadHandler {
                 (_, _, Some(e)) => warn!("GetTemplate returned with an error: {:?}", e),
                 (None, true, None) => error!("No block and No Error!"),
             },
-            Payload::SubmitBlockResponse(res) => match res.error {
-                None => info!("block submitted successfully!"),
-                Some(e) => warn!("Failed submitting block: {:?}", e),
+            Payload::SubmitBlockResponse(res) => {
+                miner.notify_submission();
+                match res.error {
+                    None => info!("block submitted successfully!"),
+                    Some(e) => warn!("Failed submitting block: {:?}", e),
+                }
             },
             Payload::GetBlockResponse(msg) => {
                 if let Some(e) = msg.error {

@@ -39,11 +39,10 @@ pub struct Opt {
     )]
     pub mine_when_not_synced: bool,
     #[structopt(
-    long = "gpu-threads",
-    default_value = "2021",
-    help = "How many GPUs to use [default: all]"
+    long = "cuda-device",
+    help = "Which GPUs to use [default: all]"
     )]
-    pub gpu_threads: u16,
+    pub cuda_device: Option<Vec<u16>>,
     #[structopt(
     long = "workload",
     default_value = "204800",
@@ -68,8 +67,10 @@ impl Opt {
             self.num_threads = num_cpus::get_physical().try_into()?;
         }
 
-        let gpu_count = Device::num_devices().unwrap();
-        self.gpu_threads = min(gpu_count as u16, self.gpu_threads);
+        let gpu_count = Device::num_devices().unwrap() as u16;
+        if self.cuda_device.is_none() {
+            self.cuda_device = Some((0..gpu_count).collect());
+        }
 
         Ok(())
     }

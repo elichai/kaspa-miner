@@ -1,3 +1,8 @@
+use std::borrow::Borrow;
+use std::io::SeekFrom::Current;
+use std::ops::Deref;
+use std::rc::{Weak, Rc};
+use cust::context::{ContextHandle, CurrentContext};
 use cust::error::CudaResult;
 use cust::function::Function;
 use cust::prelude::*;
@@ -20,12 +25,18 @@ pub struct CurandStateSobol64 {
 pub struct Kernel<'kernel> {
     func: Function<'kernel>,
     block_size: u32,
-    grid_size: u32
+    grid_size: u32,
 }
 
 impl Kernel<'kernel> {
-    pub fn new(module: &'kernel Module, name: &str, workload: usize) -> Result<Kernel<'kernel>, Error> {
-        let func = module.get_function(name).or_else(|e| { error!("Error loading function: {}", e); Result::Err(e)})?;
+    pub fn new(module: Weak<Module>, name: &'kernel str, workload: usize) -> Result<Kernel<'kernel>, Error> {
+        let func: Function;
+        unsafe {
+             func = module.as_ptr().as_ref().unwrap().get_function(name).or_else(|e| {
+                error!("Error loading function: {}", e);
+                Result::Err(e)
+            })?;
+        }
         let (_, block_size) = func.suggested_launch_configuration(0, 0.into())?;
         let grid_size = (workload as u32 + block_size - 1) / block_size;
         Ok(
@@ -36,7 +47,10 @@ impl Kernel<'kernel> {
 
 
 pub struct GPUWork<'gpu> {
-    workload: usize,
+    context: Context,
+    module: Rc<Module>,
+
+    pub workload: usize,
     stream: Stream,
     rand_state: DeviceBuffer<CurandStateSobol64>,
 
@@ -51,30 +65,18 @@ pub struct GPUWork<'gpu> {
     heavy_hash_kernel: Kernel<'gpu>,
 }
 
-pub struct GPUContext {
-    context: CudaResult<Context>,
-    module: Module,
-}
-
-impl GPUContext{
-    pub fn new(context :CudaResult<Context>) -> Result<Self, Error> {
-        let module = Module::from_str(PTX).or_else(|e| { error!("Error loading PTX: {}", e); Result::Err(e)})?;
-        Ok(Self{ context, module})
-    }
-
-    pub fn get_worker(&self, workload: usize) -> Result<GPUWork, Error>{
-        GPUWork::new(self, workload)
-    }
-}
-
 impl GPUWork<'gpu> {
-    pub fn new(context: &'gpu GPUContext, workload: usize) -> Result<Self, Error> {
+    pub fn new(device_id: u32, workload: usize) -> Result<Self, Error> {
+        let device = Device::get_device(device_id).unwrap();
+        let context = Context::create_and_push(ContextFlags::MAP_HOST | ContextFlags::SCHED_AUTO, device)?;
+        let module = Rc::new(Module::from_str(PTX).or_else(|e| { error!("Error loading PTX: {}", e); Result::Err(e)})?);
+
         let stream = Stream::new(StreamFlags::NON_BLOCKING, None)?;
 
-        let rand_init = Kernel::new(&context.module, "init", workload)?;
-        let pow_hash_kernel = Kernel::new(&context.module, "pow_cshake", workload)?;
-        let matrix_mul_kernel = Kernel::new(&context.module, "matrix_mul", workload)?;
-        let heavy_hash_kernel = Kernel::new(&context.module, "heavy_hash_cshake", workload)?;
+        let rand_init = Kernel::new( Rc::downgrade(&module), "init", workload)?;
+        let pow_hash_kernel = Kernel::new( Rc::downgrade(&module), "pow_cshake", workload)?;
+        let matrix_mul_kernel = Kernel::new( Rc::downgrade(&module), "matrix_mul", workload)?;
+        let heavy_hash_kernel = Kernel::new( Rc::downgrade(&module), "heavy_hash_cshake", workload)?;
 
         let mut rand_state = unsafe {
             DeviceBuffer::<CurandStateSobol64>::zeroed(workload).unwrap()
@@ -104,6 +106,7 @@ impl GPUWork<'gpu> {
         info!("GPU Initialized");
         Ok(
             Self {
+                context, module: Rc::clone(&module),
                 workload, stream, rand_state, nonces_buff,
                 pow_hashes_buff, matrix_mul_out_buff, final_hashes_buff, final_nonces_buff,
                 pow_hash_kernel, matrix_mul_kernel, heavy_hash_kernel
@@ -196,6 +199,10 @@ impl GPUWork<'gpu> {
         self.final_hashes_buff.copy_to(hashes)?;
         self.final_nonces_buff.copy_to(nonces)?;
         Ok(())
+    }
+
+    pub fn set_current(&self) {
+        CurrentContext::set_current(&self.context).unwrap();
     }
 
     /*pub(crate) fn check_random(&self) -> Result<(),Error> {
