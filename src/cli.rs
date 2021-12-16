@@ -71,9 +71,11 @@ impl Opt {
             self.cuda_device = Some((0..gpu_count).collect());
         }
 
-        if self.workload.is_some() && self.workload?.len() < self.cuda_device?.len() {
-            let fill_size = self.cuda_device?.len() - self.workload?.len();
-            self.workload?.extend(Vec::with_capacity(fill_size).fill(self.workload?.last()));
+        if self.workload.is_some() && self.workload.clone().unwrap().len() < self.cuda_device.clone().unwrap().len() {
+            let fill_size = self.cuda_device.clone().unwrap().len() - self.workload.clone().unwrap().len();
+            let mut fill_vec = Vec::with_capacity(fill_size);
+            fill_vec.fill(*self.workload.clone().unwrap().last().unwrap());
+            self.workload = Some([self.workload.clone().unwrap(), fill_vec].concat());
         }
 
         Ok(())
