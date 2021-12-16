@@ -22,7 +22,10 @@ you have to clone the project:
 ```sh
 git clone https://github.com/tmrlvi/kaspa-miner.git
 cd kaspa-miner
-nvcc kaspa-cuda-native/src/kaspa-cuda.cu -std=c++11 -O3 --restrict --ptx --gpu-architecture=compute_61 -o ./resources/kaspa-cuda-native.ptx -Xptxas -O3 -Xcompiler -O3
+# Using cuda nvcc that supports sm_30 (e.g., 9.2)
+nvcc kaspa-cuda-native/src/kaspa-cuda.cu -std=c++11 -O3 --restrict --ptx --gpu-architecture=compute_30 --gpu-code=sm_30 -o ./resources/kaspa-cuda-sm30.ptx -Xptxas -O3 -Xcompiler -O3
+# Using cuda nvcc from a recent cuda (e.g. 11.5)
+nvcc kaspa-cuda-native/src/kaspa-cuda.cu -std=c++11 -O3 --restrict --ptx --gpu-architecture=compute_61 --gpu-code=sm_61 -o ./resources/kaspa-cuda-sm61.ptx -Xptxas -O3 -Xcompiler -O3 
 cargo build --release
 ```
 
@@ -41,25 +44,28 @@ There's a guide here on how to run a full node and how to generate addresses: ht
 
 Help:
 ```
-kaspa-miner 0.1.1
+kaspa-miner 0.1.3-GPU-0.2
 A Kaspa high performance CPU miner
 
 USAGE:
     kaspa-miner [FLAGS] [OPTIONS] --mining-address <mining-address>
 
 FLAGS:
-    -d, --debug      Enable debug logging level
-    -h, --help       Prints help information
-        --testnet    Use testnet instead of mainnet [default: false]
-    -V, --version    Prints version information
+    -d, --debug                   Enable debug logging level
+    -h, --help                    Prints help information
+        --mine-when_not-synced    Mine even when kaspad says it is not synced, only useful when passing `--allow-submit-
+                                  block-when-not-synced` to kaspad  [default: false]
+        --testnet                 Use testnet instead of mainnet [default: false]
+    -V, --version                 Prints version information
 
 OPTIONS:
-        --gpu-threads <gpu-threads>          How many GPUs to use [default: all] [default: 2021]
+        --cuda-device <cuda-device>...       Which GPUs to use [default: all]
     -s, --kaspad-address <kaspad-address>    The IP of the kaspad instance [default: 127.0.0.1]
     -a, --mining-address <mining-address>    The Kaspa address for the miner reward
-    -t, --threads <num-threads>              Amount of miner threads to launch [default: number of logical cpus]
-                                             [default: 0]
+    -t, --threads <num-threads>              Amount of CPU miner threads to launch. The first thread manages the GPU, if
+                                             not disabled [default: number of logical cpus minus number of gpu]
     -p, --port <port>                        Kaspad port [default: Mainnet = 16111, Testnet = 16211]
+        --workload <workload>...             How many nonces to generate at once [defualt: cuda recommendations]
 ```
 
 To start mining you just need to run the following:
