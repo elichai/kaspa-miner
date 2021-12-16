@@ -24,7 +24,16 @@ __device__ __inline__ uint32_t amul4bit(uint32_t packed_vec1[32], uint32_t packe
     unsigned int res = 0;
     #pragma unroll
     for (int i=0; i<32; i++) {
+        #if __CUDA_ARCH__ >= 610
         asm("dp4a.u32.u32" " %0, %1, %2, %3;": "=r" (res): "r" (packed_vec1[i]), "r" (packed_vec2[i]), "r" (res));
+        #else
+        char4 &a4 = *((char4*)&packed_vec1[i]);
+        char4 &b4 = *((char4*)&packed_vec2[i]);
+        res += a4.x*b4.x;
+        //c += a4.y*b4.y; // In our code, the second and forth bytes are empty
+        res += a4.z*b4.z;
+        // c += a4.w*b4.w; // In our code, the second and forth bytes are empty
+        #endif
     }
 
     return res;
@@ -83,7 +92,7 @@ extern "C" {
     }
 
     __global__ void heavy_hash_cshake(const uint64_t *nonces, const Hash *datas, const uint64_t data_len, uint64_t *final_nonces, Hash *hashes/*, Hash *all_hashes*/) {
-        assert(blockDim.x < BLOCKDIM);
+        assert(blockDim.x <= BLOCKDIM);
         uint64_t dataId = threadIdx.x + blockIdx.x*blockDim.x;
         if (dataId < data_len) {
             uint8_t input[168] = {

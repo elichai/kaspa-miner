@@ -11,7 +11,8 @@ use crate::Error;
 use log::{error, info};
 use rand::Fill;
 
-static PTX: &str = include_str!("../resources/kaspa-cuda-native.ptx");
+static PTX_61: &str = include_str!("../resources/kaspa-cuda-sm61.ptx");
+static PTX_30: &str = include_str!("../resources/kaspa-cuda-sm30.ptx");
 
 // Get this from the device!
 
@@ -85,7 +86,17 @@ impl GPUWork<'gpu> {
     pub fn new(device_id: u32, workload: Option<usize>) -> Result<Self, Error> {
         let device = Device::get_device(device_id).unwrap();
         let context = Context::create_and_push(ContextFlags::MAP_HOST | ContextFlags::SCHED_AUTO, device)?;
-        let module = Rc::new(Module::from_str(PTX).or_else(|e| { error!("Error loading PTX: {}", e); Result::Err(e)})?);
+
+        let major = device.get_attribute(DeviceAttribute::ComputeCapabilityMajor)?;
+        let minor = device.get_attribute(DeviceAttribute::ComputeCapabilityMinor)?;
+        let module: Rc<Module>;
+        if major > 6 || (major == 6 && minor >= 1) {
+            module = Rc::new(Module::from_str(PTX_61).or_else(|e| { error!("Error loading PTX: {}", e); Result::Err(e)})?);
+        } else if  major >= 3 {
+            module = Rc::new(Module::from_str(PTX_30).or_else(|e| { error!("Error loading PTX: {}", e); Result::Err(e)})?);
+        } else {
+            return Err("Cuda compute version not supported".into())
+        }
 
         let stream = Stream::new(StreamFlags::NON_BLOCKING, None)?;
 
