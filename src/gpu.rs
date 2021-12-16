@@ -3,6 +3,7 @@ use std::io::SeekFrom::Current;
 use std::ops::Deref;
 use std::rc::{Weak, Rc};
 use cust::context::{ContextHandle, CurrentContext};
+use cust::device::DeviceAttribute;
 use cust::error::CudaResult;
 use cust::function::Function;
 use cust::prelude::*;
@@ -29,7 +30,7 @@ pub struct Kernel<'kernel> {
 }
 
 impl Kernel<'kernel> {
-    pub fn new(module: Weak<Module>, name: &'kernel str, workload: usize) -> Result<Kernel<'kernel>, Error> {
+    pub fn new(module: Weak<Module>, name: &'kernel str, workload: Option<usize>) -> Result<Kernel<'kernel>, Error> {
         let func: Function;
         unsafe {
              func = module.as_ptr().as_ref().unwrap().get_function(name).or_else(|e| {
@@ -38,10 +39,25 @@ impl Kernel<'kernel> {
             })?;
         }
         let (_, block_size) = func.suggested_launch_configuration(0, 0.into())?;
-        let grid_size = (workload as u32 + block_size - 1) / block_size;
+        let mut grid_size = 0u32;
+        if workload.is_some() {
+            grid_size = (workload.unwrap() as u32 + block_size - 1) / block_size;
+        } else {
+            let device = CurrentContext::get_device()?;
+            let sm_count = device.get_attribute(DeviceAttribute::MultiprocessorCount)? as u32;
+            grid_size = sm_count * func.max_active_blocks_per_multiprocessor(block_size.into(), 0)?;
+        }
         Ok(
             Self { func, block_size, grid_size }
         )
+    }
+
+    pub fn get_workload(&self) -> u32{
+        self.block_size*self.grid_size
+    }
+
+    pub fn set_workload(&mut self, workload: u32){
+        self.grid_size = (workload + self.block_size - 1)/ self.block_size
     }
 }
 
@@ -66,39 +82,56 @@ pub struct GPUWork<'gpu> {
 }
 
 impl GPUWork<'gpu> {
-    pub fn new(device_id: u32, workload: usize) -> Result<Self, Error> {
+    pub fn new(device_id: u32, workload: Option<usize>) -> Result<Self, Error> {
         let device = Device::get_device(device_id).unwrap();
         let context = Context::create_and_push(ContextFlags::MAP_HOST | ContextFlags::SCHED_AUTO, device)?;
         let module = Rc::new(Module::from_str(PTX).or_else(|e| { error!("Error loading PTX: {}", e); Result::Err(e)})?);
 
         let stream = Stream::new(StreamFlags::NON_BLOCKING, None)?;
 
-        let rand_init = Kernel::new( Rc::downgrade(&module), "init", workload)?;
-        let pow_hash_kernel = Kernel::new( Rc::downgrade(&module), "pow_cshake", workload)?;
-        let matrix_mul_kernel = Kernel::new( Rc::downgrade(&module), "matrix_mul", workload)?;
-        let heavy_hash_kernel = Kernel::new( Rc::downgrade(&module), "heavy_hash_cshake", workload)?;
+        let mut rand_init = Kernel::new( Rc::downgrade(&module), "init", workload)?;
+        let mut pow_hash_kernel = Kernel::new( Rc::downgrade(&module), "pow_cshake", workload)?;
+        let mut matrix_mul_kernel = Kernel::new( Rc::downgrade(&module), "matrix_mul", workload)?;
+        let mut heavy_hash_kernel = Kernel::new( Rc::downgrade(&module), "heavy_hash_cshake", workload)?;
+
+        let mut chosen_workload = 0 as usize;
+        if workload.is_some() {
+            chosen_workload = workload.unwrap()
+        } else {
+            for ker in [&rand_init, &pow_hash_kernel, &matrix_mul_kernel, &heavy_hash_kernel] {
+                let cur_workload = ker.get_workload();
+                if chosen_workload == 0 || chosen_workload < cur_workload as usize {
+                    chosen_workload = cur_workload as usize;
+                }
+            }
+            info!("Chosen workload: {}", chosen_workload);
+        }
+        for ker in [&mut rand_init, &mut pow_hash_kernel, &mut matrix_mul_kernel, &mut heavy_hash_kernel] {
+            ker.set_workload(chosen_workload as u32);
+        }
+
 
         let mut rand_state = unsafe {
-            DeviceBuffer::<CurandStateSobol64>::zeroed(workload).unwrap()
+            DeviceBuffer::<CurandStateSobol64>::zeroed(chosen_workload).unwrap()
         };
 
-        let nonces_buff = vec![0u64; workload].as_slice().as_dbuf()?;
-        let pow_hashes_buff = vec![[0u8; 32]; workload].as_slice().as_dbuf()?;
-        let matrix_mul_out_buff = vec![[0u8; 32]; workload].as_slice().as_dbuf()?;
+        let nonces_buff = vec![0u64; chosen_workload].as_slice().as_dbuf()?;
+        let pow_hashes_buff = vec![[0u8; 32]; chosen_workload].as_slice().as_dbuf()?;
+        let matrix_mul_out_buff = vec![[0u8; 32]; chosen_workload].as_slice().as_dbuf()?;
 
         let final_hashes_buff = vec![[0u8; 32]; heavy_hash_kernel.grid_size as usize].as_slice().as_dbuf()?;
         let final_nonces_buff = vec![0u64; heavy_hash_kernel.grid_size as usize].as_slice().as_dbuf()?;
 
         info!("Generating initial seed. This may take some time.");
         let func = rand_init.func;
-        let mut seeds = vec![1u64; 64*workload];
+        let mut seeds = vec![1u64; 64*chosen_workload];
         seeds.try_fill(&mut rand::thread_rng())?;
         unsafe {
             launch!(
                 func<<<rand_init.grid_size, rand_init.block_size, 0, stream>>>(
                     seeds.as_slice().as_dbuf()?.as_device_ptr(),
                     rand_state.as_device_ptr(),
-                    workload,
+                    chosen_workload,
                 )
             )?;
         }
@@ -107,7 +140,7 @@ impl GPUWork<'gpu> {
         Ok(
             Self {
                 context, module: Rc::clone(&module),
-                workload, stream, rand_state, nonces_buff,
+                workload: chosen_workload, stream, rand_state, nonces_buff,
                 pow_hashes_buff, matrix_mul_out_buff, final_hashes_buff, final_nonces_buff,
                 pow_hash_kernel, matrix_mul_kernel, heavy_hash_kernel
             }

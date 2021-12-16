@@ -45,10 +45,9 @@ pub struct Opt {
     pub cuda_device: Option<Vec<u16>>,
     #[structopt(
     long = "workload",
-    default_value = "204800",
-    help = "How many nonces to generate at once"
+    help = "How many nonces to generate at once [defualt: cuda recommendations]"
     )]
-    pub workload: usize,
+    pub workload: Option<Vec<usize>>,
 }
 
 impl Opt {
@@ -70,6 +69,11 @@ impl Opt {
         let gpu_count = Device::num_devices().unwrap() as u16;
         if self.cuda_device.is_none() {
             self.cuda_device = Some((0..gpu_count).collect());
+        }
+
+        if self.workload.is_some() && self.workload?.len() < self.cuda_device?.len() {
+            let fill_size = self.cuda_device?.len() - self.workload?.len();
+            self.workload?.extend(Vec::with_capacity(fill_size).fill(self.workload?.last()));
         }
 
         Ok(())

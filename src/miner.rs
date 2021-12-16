@@ -41,7 +41,7 @@ impl Drop for MinerManager {
 const LOG_RATE: Duration = Duration::from_secs(10);
 
 impl MinerManager {
-    pub fn new(send_channel: Sender<KaspadMessage>, num_threads: u16, gpus: Vec<u16>, workload: usize) -> Self {
+    pub fn new(send_channel: Sender<KaspadMessage>, num_threads: u16, gpus: Vec<u16>, workload: Option<Vec<usize>>) -> Self {
         info!("launching: {} miners", num_threads);
         let hashes_tried = Arc::new(AtomicU64::new(0));
         let is_submitting = Arc::new((Mutex::new(false), Condvar::new()));
@@ -49,7 +49,7 @@ impl MinerManager {
             .map(|i| {
                 let (send, recv) = mpsc::channel(1);
                 if i == 0 as u16 && gpus.len() > 0 {
-                    (Self::launch_gpu_miner(send_channel.clone(), recv, Arc::clone(&is_submitting),Arc::clone(&hashes_tried), gpus.clone(), workload), send)
+                    (Self::launch_gpu_miner(send_channel.clone(), recv, Arc::clone(&is_submitting),Arc::clone(&hashes_tried), gpus.clone(), workload.clone()), send)
                 } else {
                     (Self::launch_miner(send_channel.clone(), recv, Arc::clone(&is_submitting), Arc::clone(&hashes_tried)), send)
                 }
@@ -92,7 +92,6 @@ impl MinerManager {
         let (lock, cond) = &*self.is_submitting;
         let mut submission_indicator = lock.lock().unwrap();
         *submission_indicator = false;
-        info!("Notifying from notify_submission");
         cond.notify_all();
     }
 
@@ -102,16 +101,16 @@ impl MinerManager {
         is_submitting: Arc<(Mutex<bool>, Condvar)>,
         hashes_tried: Arc<AtomicU64>,
         gpus: Vec<u16>,
-        workload: usize
+        workload: Option<Vec<usize>>
     ) -> MinerHandler {
         std::thread::spawn(move | | {
             let mut gpu_workers : Vec<GPUWork> = Vec::new();
             let mut local_hashes: Vec<Vec<[u8; 32]>> = Vec::new();
             let mut local_nonces: Vec<Vec<u64>> = Vec::new();
 
-            for gpu_id in &gpus {
-                info!("Spawned GPU Thread #{}", gpu_id);
-                let mut gpu_work = GPUWork::new(*gpu_id as u32, workload).unwrap();
+            for g in 0..gpus.len() {
+                info!("Spawned GPU Thread #{}", gpus[g]);
+                let mut gpu_work = GPUWork::new(gpus[g] as u32, workload.clone().and_then(|w| Some(w[g])).or_else(|| None)).unwrap();
                 //let mut gpu_work = gpu_ctx.get_worker(workload).unwrap();
                 let out_size: usize = gpu_work.get_output_size();
 
