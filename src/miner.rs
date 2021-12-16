@@ -1,18 +1,15 @@
-use std::collections::LinkedList;
 use crate::proto::{KaspadMessage, RpcBlock};
 use crate::{pow, Error};
-use log::{info, warn};
+use log::{error, info, warn};
 use rand::{thread_rng, RngCore};
 use std::num::Wrapping;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
-use std::time;
 use std::time::Duration;
 use tokio::sync::mpsc::{self, error::TryRecvError, Receiver, Sender};
 use tokio::task::{self, JoinHandle};
 use tokio::time::MissedTickBehavior;
 
-use cust::prelude::*;
 use crate::gpu::GPUWork;
 
 use crate::target::Uint256;
@@ -41,15 +38,15 @@ impl Drop for MinerManager {
 const LOG_RATE: Duration = Duration::from_secs(10);
 
 impl MinerManager {
-    pub fn new(send_channel: Sender<KaspadMessage>, num_threads: u16, gpus: Vec<u16>, workload: Option<Vec<usize>>) -> Self {
+    pub fn new(send_channel: Sender<KaspadMessage>, num_threads: usize, gpus: Vec<u16>, workload: Option<Vec<usize>>) -> Self {
         info!("launching: {} miners", num_threads);
         let hashes_tried = Arc::new(AtomicU64::new(0));
         let is_submitting = Arc::new((Mutex::new(false), Condvar::new()));
-        let (handels, channels) = (0..num_threads)
+        let (handels, channels) = (0..(num_threads + gpus.len()))
             .map(|i| {
                 let (send, recv) = mpsc::channel(1);
-                if i == 0 as u16 && gpus.len() > 0 {
-                    (Self::launch_gpu_miner(send_channel.clone(), recv, Arc::clone(&is_submitting),Arc::clone(&hashes_tried), gpus.clone(), workload.clone()), send)
+                if i < gpus.len() {
+                    (Self::launch_gpu_miner(send_channel.clone(), recv, Arc::clone(&is_submitting),Arc::clone(&hashes_tried), gpus.clone(), i, workload.clone()), send)
                 } else {
                     (Self::launch_miner(send_channel.clone(), recv, Arc::clone(&is_submitting), Arc::clone(&hashes_tried)), send)
                 }
@@ -83,7 +80,11 @@ impl MinerManager {
         };
 
         for c in &self.block_channels {
-            c.send(state.clone()).await.map_err(|e| e.to_string()).unwrap();
+            if !c.is_closed() {
+                c.send(state.clone()).await.unwrap_or_else(|e| {
+                    error!("error sending block to thread: {}", e.to_string());
+                });
+            }
         }
         Ok(())
     }
@@ -101,69 +102,60 @@ impl MinerManager {
         is_submitting: Arc<(Mutex<bool>, Condvar)>,
         hashes_tried: Arc<AtomicU64>,
         gpus: Vec<u16>,
+        thd_id: usize,
         workload: Option<Vec<usize>>
     ) -> MinerHandler {
-        std::thread::spawn(move | | {
-            let mut gpu_workers : Vec<GPUWork> = Vec::new();
-            let mut local_hashes: Vec<Vec<[u8; 32]>> = Vec::new();
-            let mut local_nonces: Vec<Vec<u64>> = Vec::new();
-
-            for g in 0..gpus.len() {
-                info!("Spawned GPU Thread #{}", gpus[g]);
-                let mut gpu_work = GPUWork::new(gpus[g] as u32, workload.clone().and_then(|w| Some(w[g])).or_else(|| None)).unwrap();
+        std::thread::spawn(move || {
+            (| |{
+                info!("Spawned Thread for GPU #{}", gpus[thd_id]);
+                let mut gpu_work = GPUWork::new(gpus[thd_id] as u32, workload.clone().and_then(|w| Some(w[thd_id])).or_else(|| None))?;
                 //let mut gpu_work = gpu_ctx.get_worker(workload).unwrap();
                 let out_size: usize = gpu_work.get_output_size();
 
-                gpu_workers.push(gpu_work);
-                local_hashes.push(vec![[0u8; 32]; out_size]);
-                local_nonces.push(vec![0u64; out_size]);
-            }
+                let mut hashes = vec![[0u8; 32]; out_size];
+                let mut nonces = vec![0u64; out_size];
 
-            let mut state = None;
+                let mut state = None;
 
-            let mut has_results = false;
-            let mut found = false;
-            let (lock, cond) = &*is_submitting;
-            let num_workers = gpus.len();
-            loop{
-                {
-                    let _guard = cond.wait_timeout_while(lock.lock().unwrap(), Duration::from_millis(100), |submission_indicator| { *submission_indicator }).unwrap();
-                }
-                // check block header?
-                if state.is_none() {
-                    state = block_channel.blocking_recv().ok_or(TryRecvError::Disconnected).unwrap();
-                } else if local_nonces[0][0] % 128 == 0 || found {
-                    has_results = false;
-                    found = false;
-                    match block_channel.try_recv() {
-                        Ok(new_state) => state = new_state,
-                        Err(TryRecvError::Empty) => (),
-                        Err(TryRecvError::Disconnected) => return Err(TryRecvError::Disconnected.into()),
+                let mut has_results = false;
+                let mut found = false;
+                let (lock, cond) = &*is_submitting;
+                loop{
+                    {
+                        let _guard = cond.wait_timeout_while(lock.lock().unwrap(), Duration::from_millis(100), |submission_indicator| { *submission_indicator }).unwrap();
                     }
-                }
-                let state_ref = match state.as_mut() {
-                    Some(s) => s,
-                    None => continue,
-                };
+                    // check block header?
+                    if state.is_none() {
+                        state = block_channel.blocking_recv().ok_or(TryRecvError::Disconnected)?;
+                    } else if nonces[0] % 128 == 0 || found {
+                        has_results = false;
+                        found = false;
+                        match block_channel.try_recv() {
+                            Ok(new_state) => state = new_state,
+                            Err(TryRecvError::Empty) => (),
+                            Err(TryRecvError::Disconnected) => return Err(TryRecvError::Disconnected.into()),
+                        }
+                    }
+                    let state_ref = match state.as_mut() {
+                        Some(s) => s,
+                        None => continue,
+                    };
 
-                for g in 0..num_workers {
-                    gpu_workers[g].set_current();
-                    gpu_workers[g].sync().unwrap();
-                    state_ref.start_pow_gpu(&mut gpu_workers[g]);
-                    gpu_workers[g].copy_output_to(&mut local_hashes[g], &mut local_nonces[g]).unwrap();
-                }
+                    gpu_work.sync().unwrap();
 
-                if has_results {
-                    for g in 0..num_workers {
-                        for i in 0..gpu_workers[g].get_output_size() {
-                            if Uint256::from_le_bytes(local_hashes[g][i]) <= state_ref.target {
-                                if let Some(block) = state_ref.generate_block_if_pow(local_nonces[g][i]) {
+                    state_ref.start_pow_gpu(&mut gpu_work);
+                    gpu_work.copy_output_to(&mut hashes, &mut nonces)?;
+
+                    if has_results {
+                        for i in 0..gpu_work.get_output_size() {
+                            if Uint256::from_le_bytes(hashes[i]) <= state_ref.target {
+                                if let Some(block) = state_ref.generate_block_if_pow(nonces[i]) {
                                     let block_hash =
                                         block.block_hash().expect("We just got it from the state, we should be able to hash it");
                                     {
                                         let mut submission_indicator = lock.lock().unwrap();
                                         *submission_indicator = true;
-                                        send_channel.blocking_send(KaspadMessage::submit_block(block)).unwrap();
+                                        send_channel.blocking_send(KaspadMessage::submit_block(block))?;
                                     }
                                     info!("Found a block: {:x}", block_hash);
                                     found = true;
@@ -195,18 +187,18 @@ impl MinerManager {
                         }*/
 
 
-                        hashes_tried.fetch_add(gpu_workers[g].workload.try_into().unwrap(), Ordering::AcqRel);
+                        hashes_tried.fetch_add(gpu_work.workload.try_into().unwrap(), Ordering::AcqRel);
                     }
+
+                    gpu_work.calculate_heavy_hash();
+                    has_results = true;
+
+
                 }
-
-                for g in 0..num_workers {
-                    gpu_workers[g].set_current();
-                    gpu_workers[g].calculate_heavy_hash();
-                }
-                has_results = true;
-
-
-            }
+            })().map_err(|e: Error| {
+                error!("GPU thread of #{} crashed: {}", thd_id, e.to_string());
+                e
+            })
         })
     }
 
@@ -219,33 +211,46 @@ impl MinerManager {
     ) -> MinerHandler {
         let mut nonce = Wrapping(thread_rng().next_u64());
         std::thread::spawn(move || {
-            let mut state = None;
-            loop {
-                if state.is_none() {
-                    state = block_channel.blocking_recv().ok_or(TryRecvError::Disconnected).unwrap();
-                }
-                let state_ref = match state.as_mut() {
-                    Some(s) => s,
-                    None => continue,
-                };
-                if let Some(block) = state_ref.generate_block_if_pow(nonce.0) {
-                    let block_hash =
-                        block.block_hash().expect("We just got it from the state, we should be able to hash it");
-                    send_channel.blocking_send(KaspadMessage::submit_block(block)).unwrap();
-                    info!("Found a block: {:x}", block_hash);
-                }
-                nonce += Wrapping(1);
-                // TODO: Is this really necessary? can we just use Relaxed?
-                hashes_tried.fetch_add(1, Ordering::AcqRel);
+            (|| {
+                let mut state = None;
+                let (lock, cond) = &*is_submitting;
+                loop {
+                    {
+                        let _guard = cond.wait_timeout_while(lock.lock().unwrap(), Duration::from_millis(100), |submission_indicator| { *submission_indicator }).unwrap();
+                    }
+                    if state.is_none() {
+                        state = block_channel.blocking_recv().ok_or(TryRecvError::Disconnected).unwrap();
+                    }
+                    let state_ref = match state.as_mut() {
+                        Some(s) => s,
+                        None => continue,
+                    };
+                    if let Some(block) = state_ref.generate_block_if_pow(nonce.0) {
+                        let block_hash =
+                            block.block_hash().expect("We just got it from the state, we should be able to hash it");
+                        {
+                            let mut submission_indicator = lock.lock().unwrap();
+                            *submission_indicator = true;
+                            send_channel.blocking_send(KaspadMessage::submit_block(block))?;
+                        }
+                        info!("Found a block: {:x}", block_hash);
+                    }
+                    nonce += Wrapping(1);
+                    // TODO: Is this really necessary? can we just use Relaxed?
+                    hashes_tried.fetch_add(1, Ordering::AcqRel);
 
-                if nonce.0 % 128 == 0 {
-                    match block_channel.try_recv() {
-                        Ok(new_state) => state = new_state,
-                        Err(TryRecvError::Empty) => (),
-                        Err(TryRecvError::Disconnected) => return Err(TryRecvError::Disconnected.into()),
+                    if nonce.0 % 128 == 0 {
+                        match block_channel.try_recv() {
+                            Ok(new_state) => state = new_state,
+                            Err(TryRecvError::Empty) => (),
+                            Err(TryRecvError::Disconnected) => return Err(TryRecvError::Disconnected.into()),
+                        }
                     }
                 }
-            }
+            })().map_err(|e: Error| {
+                error!("CPU thread crashed: {}", e.to_string());
+                e
+            })
         })
     }
 

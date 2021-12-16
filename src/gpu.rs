@@ -1,10 +1,6 @@
-use std::borrow::Borrow;
-use std::io::SeekFrom::Current;
-use std::ops::Deref;
 use std::rc::{Weak, Rc};
-use cust::context::{ContextHandle, CurrentContext};
+use cust::context::CurrentContext;
 use cust::device::DeviceAttribute;
-use cust::error::CudaResult;
 use cust::function::Function;
 use cust::prelude::*;
 use crate::Error;
@@ -40,7 +36,7 @@ impl Kernel<'kernel> {
             })?;
         }
         let (_, block_size) = func.suggested_launch_configuration(0, 0.into())?;
-        let mut grid_size = 0u32;
+        let grid_size ;
         if workload.is_some() {
             grid_size = (workload.unwrap() as u32 + block_size - 1) / block_size;
         } else {
@@ -64,8 +60,8 @@ impl Kernel<'kernel> {
 
 
 pub struct GPUWork<'gpu> {
-    context: Context,
-    module: Rc<Module>,
+    _context: Context,
+    _module: Rc<Module>,
 
     pub workload: usize,
     stream: Stream,
@@ -85,25 +81,25 @@ pub struct GPUWork<'gpu> {
 impl GPUWork<'gpu> {
     pub fn new(device_id: u32, workload: Option<usize>) -> Result<Self, Error> {
         let device = Device::get_device(device_id).unwrap();
-        let context = Context::create_and_push(ContextFlags::MAP_HOST | ContextFlags::SCHED_AUTO, device)?;
+        let _context = Context::create_and_push(ContextFlags::MAP_HOST | ContextFlags::SCHED_AUTO, device)?;
 
         let major = device.get_attribute(DeviceAttribute::ComputeCapabilityMajor)?;
         let minor = device.get_attribute(DeviceAttribute::ComputeCapabilityMinor)?;
-        let module: Rc<Module>;
+        let _module: Rc<Module>;
         if major > 6 || (major == 6 && minor >= 1) {
-            module = Rc::new(Module::from_str(PTX_61).or_else(|e| { error!("Error loading PTX: {}", e); Result::Err(e)})?);
+            _module = Rc::new(Module::from_str(PTX_61).or_else(|e| { error!("Error loading PTX: {}", e); Result::Err(e)})?);
         } else if  major >= 3 {
-            module = Rc::new(Module::from_str(PTX_30).or_else(|e| { error!("Error loading PTX: {}", e); Result::Err(e)})?);
+            _module = Rc::new(Module::from_str(PTX_30).or_else(|e| { error!("Error loading PTX: {}", e); Result::Err(e)})?);
         } else {
             return Err("Cuda compute version not supported".into())
         }
 
         let stream = Stream::new(StreamFlags::NON_BLOCKING, None)?;
 
-        let mut rand_init = Kernel::new( Rc::downgrade(&module), "init", workload)?;
-        let mut pow_hash_kernel = Kernel::new( Rc::downgrade(&module), "pow_cshake", workload)?;
-        let mut matrix_mul_kernel = Kernel::new( Rc::downgrade(&module), "matrix_mul", workload)?;
-        let mut heavy_hash_kernel = Kernel::new( Rc::downgrade(&module), "heavy_hash_cshake", workload)?;
+        let mut rand_init = Kernel::new( Rc::downgrade(&_module), "init", workload)?;
+        let mut pow_hash_kernel = Kernel::new( Rc::downgrade(&_module), "pow_cshake", workload)?;
+        let mut matrix_mul_kernel = Kernel::new( Rc::downgrade(&_module), "matrix_mul", workload)?;
+        let mut heavy_hash_kernel = Kernel::new( Rc::downgrade(&_module), "heavy_hash_cshake", workload)?;
 
         let mut chosen_workload = 0 as usize;
         if workload.is_some() {
@@ -115,8 +111,8 @@ impl GPUWork<'gpu> {
                     chosen_workload = cur_workload as usize;
                 }
             }
-            info!("Chosen workload: {}", chosen_workload);
         }
+        info!("Chosen workload: {}", chosen_workload);
         for ker in [&mut rand_init, &mut pow_hash_kernel, &mut matrix_mul_kernel, &mut heavy_hash_kernel] {
             ker.set_workload(chosen_workload as u32);
         }
@@ -150,7 +146,7 @@ impl GPUWork<'gpu> {
         info!("GPU Initialized");
         Ok(
             Self {
-                context, module: Rc::clone(&module),
+                _context, _module: Rc::clone(&_module),
                 workload: chosen_workload, stream, rand_state, nonces_buff,
                 pow_hashes_buff, matrix_mul_out_buff, final_hashes_buff, final_nonces_buff,
                 pow_hash_kernel, matrix_mul_kernel, heavy_hash_kernel
@@ -246,7 +242,7 @@ impl GPUWork<'gpu> {
     }
 
     pub fn set_current(&self) {
-        CurrentContext::set_current(&self.context).unwrap();
+        CurrentContext::set_current(&self._context).unwrap();
     }
 
     /*pub(crate) fn check_random(&self) -> Result<(),Error> {

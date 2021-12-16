@@ -1,6 +1,6 @@
 use log::LevelFilter;
-use std::{net::IpAddr, str::FromStr};
-use std::cmp::min;
+use std::{iter, net::IpAddr, str::FromStr};
+use std::cmp::max;
 use cust::device::Device;
 use structopt::StructOpt;
 
@@ -29,10 +29,9 @@ pub struct Opt {
     #[structopt(
         short = "t",
         long = "threads",
-        default_value = "0",
-        help = "Amount of miner threads to launch. The first thread manages the GPU, if not disabled [default: number of logical cpus]"
+        help = "Amount of CPU miner threads to launch. The first thread manages the GPU, if not disabled [default: number of logical cpus minus number of gpu]"
     )]
-    pub num_threads: u16,
+    pub num_threads: Option<usize>,
     #[structopt(
         long = "mine-when_not-synced",
         help = "Mine even when kaspad says it is not synced, only useful when passing `--allow-submit-block-when-not-synced` to kaspad  [default: false]"
@@ -61,10 +60,6 @@ impl Opt {
             let port = self.port();
             self.kaspad_address = format!("grpc://{}:{}", self.kaspad_address, port);
         }
-        log::info!("kaspad address: {}", self.kaspad_address);
-        if self.num_threads == 0 {
-            self.num_threads = num_cpus::get_physical().try_into()?;
-        }
 
         let gpu_count = Device::num_devices().unwrap() as u16;
         if self.cuda_device.is_none() {
@@ -73,9 +68,12 @@ impl Opt {
 
         if self.workload.is_some() && self.workload.clone().unwrap().len() < self.cuda_device.clone().unwrap().len() {
             let fill_size = self.cuda_device.clone().unwrap().len() - self.workload.clone().unwrap().len();
-            let mut fill_vec = Vec::with_capacity(fill_size);
-            fill_vec.fill(*self.workload.clone().unwrap().last().unwrap());
-            self.workload = Some([self.workload.clone().unwrap(), fill_vec].concat());
+            let fill_vec: Vec<usize> = iter::repeat(*self.workload.clone().unwrap().last().unwrap()).take(fill_size).collect();
+            self.workload = Some([self.workload.clone().unwrap(), fill_vec.clone()].concat());
+        }
+
+        if self.num_threads.is_none() {
+            self.num_threads = Some(max(num_cpus::get_physical() - self.cuda_device.clone().or_else(|| Some(vec![0u16; 0])).unwrap().len(), 0));
         }
 
         Ok(())
