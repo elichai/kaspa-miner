@@ -26,6 +26,11 @@ jobs:
           toolchain: stable
           override: true
 
+      - name: Install cuda
+        uses: Jimver/cuda-toolkit@v0.2.5
+        with:
+          cuda: '11.2.2'
+
       - name: Build on Linux
         if: runner.os == 'Linux'
         # We're using musl to make the binaries statically linked and portable

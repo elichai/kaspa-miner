@@ -23,6 +23,11 @@ jobs:
           toolchain: stable
           override: true
 
+      - name: Install cuda
+        uses: Jimver/cuda-toolkit@v0.2.5
+        with:
+          cuda: '11.2.2'
+
       - name: Cache
         uses: actions/cache@v2
         with:
@@ -59,6 +64,11 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
+
+      - name: Install cuda
+        uses: Jimver/cuda-toolkit@v0.2.5
+        with:
+          cuda: '11.2.2'
 
       - name: Cache
         uses: actions/cache@v2

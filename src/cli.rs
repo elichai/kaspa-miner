@@ -1,7 +1,7 @@
-use log::LevelFilter;
-use std::{iter, net::IpAddr, str::FromStr};
-use std::cmp::max;
 use cust::device::Device;
+use log::LevelFilter;
+use std::cmp::max;
+use std::{iter, net::IpAddr, str::FromStr};
 use structopt::StructOpt;
 
 use crate::Error;
@@ -37,15 +37,9 @@ pub struct Opt {
         help = "Mine even when kaspad says it is not synced, only useful when passing `--allow-submit-block-when-not-synced` to kaspad  [default: false]"
     )]
     pub mine_when_not_synced: bool,
-    #[structopt(
-    long = "cuda-device",
-    help = "Which GPUs to use [default: all]"
-    )]
+    #[structopt(long = "cuda-device", help = "Which GPUs to use [default: all]")]
     pub cuda_device: Option<Vec<u16>>,
-    #[structopt(
-    long = "workload",
-    help = "How many nonces to generate at once [defualt: cuda recommendations]"
-    )]
+    #[structopt(long = "workload", help = "How many nonces to generate at once [defualt: cuda recommendations]")]
     pub workload: Option<Vec<usize>>,
 }
 
@@ -68,12 +62,16 @@ impl Opt {
 
         if self.workload.is_some() && self.workload.clone().unwrap().len() < self.cuda_device.clone().unwrap().len() {
             let fill_size = self.cuda_device.clone().unwrap().len() - self.workload.clone().unwrap().len();
-            let fill_vec: Vec<usize> = iter::repeat(*self.workload.clone().unwrap().last().unwrap()).take(fill_size).collect();
+            let fill_vec: Vec<usize> =
+                iter::repeat(*self.workload.clone().unwrap().last().unwrap()).take(fill_size).collect();
             self.workload = Some([self.workload.clone().unwrap(), fill_vec.clone()].concat());
         }
 
         if self.num_threads.is_none() {
-            self.num_threads = Some(max(num_cpus::get_physical() - self.cuda_device.clone().or_else(|| Some(vec![0u16; 0])).unwrap().len(), 0));
+            self.num_threads = Some(max(
+                num_cpus::get_physical() - self.cuda_device.clone().or_else(|| Some(vec![0u16; 0])).unwrap().len(),
+                0,
+            ));
         }
 
         Ok(())

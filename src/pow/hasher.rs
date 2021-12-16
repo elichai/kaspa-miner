@@ -103,9 +103,9 @@ mod benches {
     extern crate test;
 
     use self::test::{black_box, Bencher};
-    use super::{PowHasher, HeavyHasher};
-    use crate::Hash;
+    use super::{HeavyHasher, PowHasher};
     use crate::pow::hasher::Hasher;
+    use crate::Hash;
 
     #[bench]
     pub fn bench_pow_hash(bh: &mut Bencher) {

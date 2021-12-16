@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::gpu::GPUWork;
 pub use crate::pow::hasher::HeaderHasher;
 use crate::pow::hasher::{Hasher, PowHasher};
 use crate::pow::heavy_hash::Matrix;
@@ -8,7 +9,6 @@ use crate::{
     target::{self, Uint256},
     Error,
 };
-use crate::gpu::GPUWork;
 use cust::prelude::SliceExt;
 
 mod hasher;
@@ -39,13 +39,18 @@ impl State {
         hasher.update(pre_pow_hash).update(header.timestamp.to_le_bytes()).update([0u8; 32]);
         let matrix = Arc::new(Matrix::generate(pre_pow_hash));
 
-        Ok(
-            Self {
-                matrix, target,
-                pow_hash_header: [pre_pow_hash.0.as_slice(), header.timestamp.to_le_bytes().as_slice(), [0u8; 32].as_slice()].concat(),
-                block: Arc::new(block), hasher
-            }
-        )
+        Ok(Self {
+            matrix,
+            target,
+            pow_hash_header: [
+                pre_pow_hash.0.as_slice(),
+                header.timestamp.to_le_bytes().as_slice(),
+                [0u8; 32].as_slice(),
+            ]
+            .concat(),
+            block: Arc::new(block),
+            hasher,
+        })
     }
 
     #[inline(always)]
@@ -76,7 +81,7 @@ impl State {
     }
 
     #[inline(always)]
-    pub fn start_pow_gpu(&self, gpu_work: &mut GPUWork){
+    pub fn start_pow_gpu(&self, gpu_work: &mut GPUWork) {
         gpu_work.calculate_pow_hash(&self.pow_hash_header, None);
         let mut matrix_gpu = self.matrix.clone().0.as_slice().as_dbuf().unwrap();
         gpu_work.calculate_matrix_mul(&mut matrix_gpu);

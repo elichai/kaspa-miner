@@ -4,19 +4,19 @@
 use crate::cli::Opt;
 use crate::client::KaspadHandler;
 use crate::proto::NotifyBlockAddedRequestMessage;
+use cust::CudaFlags;
 use log::warn;
 use std::error::Error as StdError;
 use std::fmt;
-use cust::CudaFlags;
 use structopt::StructOpt;
 
 mod cli;
 mod client;
+mod gpu;
 mod kaspad_messages;
 mod miner;
 mod pow;
 mod target;
-mod gpu;
 
 pub mod proto {
     tonic::include_proto!("protowire");

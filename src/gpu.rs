@@ -1,11 +1,11 @@
-use std::rc::{Weak, Rc};
+use crate::Error;
 use cust::context::CurrentContext;
 use cust::device::DeviceAttribute;
 use cust::function::Function;
 use cust::prelude::*;
-use crate::Error;
 use log::{error, info};
 use rand::Fill;
+use std::rc::{Rc, Weak};
 
 static PTX_61: &str = include_str!("../resources/kaspa-cuda-sm61.ptx");
 static PTX_30: &str = include_str!("../resources/kaspa-cuda-sm30.ptx");
@@ -30,13 +30,13 @@ impl Kernel<'kernel> {
     pub fn new(module: Weak<Module>, name: &'kernel str, workload: Option<usize>) -> Result<Kernel<'kernel>, Error> {
         let func: Function;
         unsafe {
-             func = module.as_ptr().as_ref().unwrap().get_function(name).or_else(|e| {
+            func = module.as_ptr().as_ref().unwrap().get_function(name).or_else(|e| {
                 error!("Error loading function: {}", e);
                 Result::Err(e)
             })?;
         }
         let (_, block_size) = func.suggested_launch_configuration(0, 0.into())?;
-        let grid_size ;
+        let grid_size;
         if workload.is_some() {
             grid_size = (workload.unwrap() as u32 + block_size - 1) / block_size;
         } else {
@@ -44,20 +44,17 @@ impl Kernel<'kernel> {
             let sm_count = device.get_attribute(DeviceAttribute::MultiprocessorCount)? as u32;
             grid_size = sm_count * func.max_active_blocks_per_multiprocessor(block_size.into(), 0)?;
         }
-        Ok(
-            Self { func, block_size, grid_size }
-        )
+        Ok(Self { func, block_size, grid_size })
     }
 
-    pub fn get_workload(&self) -> u32{
-        self.block_size*self.grid_size
+    pub fn get_workload(&self) -> u32 {
+        self.block_size * self.grid_size
     }
 
-    pub fn set_workload(&mut self, workload: u32){
-        self.grid_size = (workload + self.block_size - 1)/ self.block_size
+    pub fn set_workload(&mut self, workload: u32) {
+        self.grid_size = (workload + self.block_size - 1) / self.block_size
     }
 }
-
 
 pub struct GPUWork<'gpu> {
     _context: Context,
@@ -87,19 +84,25 @@ impl GPUWork<'gpu> {
         let minor = device.get_attribute(DeviceAttribute::ComputeCapabilityMinor)?;
         let _module: Rc<Module>;
         if major > 6 || (major == 6 && minor >= 1) {
-            _module = Rc::new(Module::from_str(PTX_61).or_else(|e| { error!("Error loading PTX: {}", e); Result::Err(e)})?);
-        } else if  major >= 3 {
-            _module = Rc::new(Module::from_str(PTX_30).or_else(|e| { error!("Error loading PTX: {}", e); Result::Err(e)})?);
+            _module = Rc::new(Module::from_str(PTX_61).or_else(|e| {
+                error!("Error loading PTX: {}", e);
+                Result::Err(e)
+            })?);
+        } else if major >= 3 {
+            _module = Rc::new(Module::from_str(PTX_30).or_else(|e| {
+                error!("Error loading PTX: {}", e);
+                Result::Err(e)
+            })?);
         } else {
-            return Err("Cuda compute version not supported".into())
+            return Err("Cuda compute version not supported".into());
         }
 
         let stream = Stream::new(StreamFlags::NON_BLOCKING, None)?;
 
-        let mut rand_init = Kernel::new( Rc::downgrade(&_module), "init", workload)?;
-        let mut pow_hash_kernel = Kernel::new( Rc::downgrade(&_module), "pow_cshake", workload)?;
-        let mut matrix_mul_kernel = Kernel::new( Rc::downgrade(&_module), "matrix_mul", workload)?;
-        let mut heavy_hash_kernel = Kernel::new( Rc::downgrade(&_module), "heavy_hash_cshake", workload)?;
+        let mut rand_init = Kernel::new(Rc::downgrade(&_module), "init", workload)?;
+        let mut pow_hash_kernel = Kernel::new(Rc::downgrade(&_module), "pow_cshake", workload)?;
+        let mut matrix_mul_kernel = Kernel::new(Rc::downgrade(&_module), "matrix_mul", workload)?;
+        let mut heavy_hash_kernel = Kernel::new(Rc::downgrade(&_module), "heavy_hash_cshake", workload)?;
 
         let mut chosen_workload = 0 as usize;
         if workload.is_some() {
@@ -117,10 +120,7 @@ impl GPUWork<'gpu> {
             ker.set_workload(chosen_workload as u32);
         }
 
-
-        let mut rand_state = unsafe {
-            DeviceBuffer::<CurandStateSobol64>::zeroed(chosen_workload).unwrap()
-        };
+        let mut rand_state = unsafe { DeviceBuffer::<CurandStateSobol64>::zeroed(chosen_workload).unwrap() };
 
         let nonces_buff = vec![0u64; chosen_workload].as_slice().as_dbuf()?;
         let pow_hashes_buff = vec![[0u8; 32]; chosen_workload].as_slice().as_dbuf()?;
@@ -131,7 +131,7 @@ impl GPUWork<'gpu> {
 
         info!("Generating initial seed. This may take some time.");
         let func = rand_init.func;
-        let mut seeds = vec![1u64; 64*chosen_workload];
+        let mut seeds = vec![1u64; 64 * chosen_workload];
         seeds.try_fill(&mut rand::thread_rng())?;
         unsafe {
             launch!(
@@ -142,20 +142,30 @@ impl GPUWork<'gpu> {
                 )
             )?;
         }
-        stream.synchronize().or_else(|e| {error!("GPU Init failed: {}", rand_state.len()); Err(e)})?;
+        stream.synchronize().or_else(|e| {
+            error!("GPU Init failed: {}", rand_state.len());
+            Err(e)
+        })?;
         info!("GPU Initialized");
-        Ok(
-            Self {
-                _context, _module: Rc::clone(&_module),
-                workload: chosen_workload, stream, rand_state, nonces_buff,
-                pow_hashes_buff, matrix_mul_out_buff, final_hashes_buff, final_nonces_buff,
-                pow_hash_kernel, matrix_mul_kernel, heavy_hash_kernel
-            }
-        )
+        Ok(Self {
+            _context,
+            _module: Rc::clone(&_module),
+            workload: chosen_workload,
+            stream,
+            rand_state,
+            nonces_buff,
+            pow_hashes_buff,
+            matrix_mul_out_buff,
+            final_hashes_buff,
+            final_nonces_buff,
+            pow_hash_kernel,
+            matrix_mul_kernel,
+            heavy_hash_kernel,
+        })
     }
 
     #[inline(always)]
-    pub(crate) fn calculate_pow_hash(&mut self, hash_header: &Vec<u8>, nonces: Option<&Vec<u64>> ) {
+    pub(crate) fn calculate_pow_hash(&mut self, hash_header: &Vec<u8>, nonces: Option<&Vec<u64>>) {
         let func = &self.pow_hash_kernel.func;
         let stream = &self.stream;
         let mut generate = true;
@@ -176,12 +186,13 @@ impl GPUWork<'gpu> {
                     generate,
                     self.rand_state.as_device_ptr(),
                 )
-            ).unwrap(); // We see errors in sync
+            )
+            .unwrap(); // We see errors in sync
         }
     }
 
     #[inline(always)]
-    pub(crate) fn calculate_matrix_mul(&mut self, matrix_gpu: &mut DeviceBuffer<[u16; 64]>){
+    pub(crate) fn calculate_matrix_mul(&mut self, matrix_gpu: &mut DeviceBuffer<[u16; 64]>) {
         let func = &self.matrix_mul_kernel.func;
         let stream = &self.stream;
         unsafe {
@@ -197,13 +208,14 @@ impl GPUWork<'gpu> {
                         self.pow_hashes_buff.len(),
                         self.matrix_mul_out_buff.as_device_ptr()
                 )
-            ).unwrap(); // We see errors in sync
+            )
+            .unwrap(); // We see errors in sync
         }
         // TODO: synchronize?
     }
 
     #[inline(always)]
-    pub(crate) fn calculate_heavy_hash(&mut self){
+    pub(crate) fn calculate_heavy_hash(&mut self) {
         let func = &self.heavy_hash_kernel.func;
         let stream = &self.stream;
         unsafe {
@@ -219,23 +231,24 @@ impl GPUWork<'gpu> {
                     self.final_nonces_buff.as_device_ptr(),
                     self.final_hashes_buff.as_device_ptr(),
                 )
-            ).unwrap(); // We see errors in sync
+            )
+            .unwrap(); // We see errors in sync
         }
     }
 
     #[inline(always)]
-    pub(crate) fn sync(&self) -> Result<(), Error>{
+    pub(crate) fn sync(&self) -> Result<(), Error> {
         self.stream.synchronize()?;
         Ok(())
     }
 
     #[inline(always)]
-    pub(crate) fn get_output_size(&self) -> usize{
+    pub(crate) fn get_output_size(&self) -> usize {
         self.heavy_hash_kernel.grid_size as usize
     }
 
     #[inline(always)]
-    pub(crate) fn copy_output_to(& self, hashes: &mut Vec<[u8; 32]>, nonces: &mut Vec<u64>) -> Result<(),Error> {
+    pub(crate) fn copy_output_to(&self, hashes: &mut Vec<[u8; 32]>, nonces: &mut Vec<u64>) -> Result<(), Error> {
         self.final_hashes_buff.copy_to(hashes)?;
         self.final_nonces_buff.copy_to(nonces)?;
         Ok(())
@@ -256,5 +269,4 @@ impl GPUWork<'gpu> {
     pub(crate) fn copy_input_from(&mut self, nonces: &Vec<u64>){
         self.nonces_buff.copy_from(nonces);
     }*/
-
 }

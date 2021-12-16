@@ -16,7 +16,6 @@ use crate::target::Uint256;
 
 type MinerHandler = std::thread::JoinHandle<Result<(), Error>>;
 
-
 #[allow(dead_code)]
 pub struct MinerManager {
     handles: Vec<MinerHandler>,
@@ -38,7 +37,12 @@ impl Drop for MinerManager {
 const LOG_RATE: Duration = Duration::from_secs(10);
 
 impl MinerManager {
-    pub fn new(send_channel: Sender<KaspadMessage>, num_threads: usize, gpus: Vec<u16>, workload: Option<Vec<usize>>) -> Self {
+    pub fn new(
+        send_channel: Sender<KaspadMessage>,
+        num_threads: usize,
+        gpus: Vec<u16>,
+        workload: Option<Vec<usize>>,
+    ) -> Self {
         info!("launching: {} miners", num_threads);
         let hashes_tried = Arc::new(AtomicU64::new(0));
         let is_submitting = Arc::new((Mutex::new(false), Condvar::new()));
@@ -46,9 +50,28 @@ impl MinerManager {
             .map(|i| {
                 let (send, recv) = mpsc::channel(1);
                 if i < gpus.len() {
-                    (Self::launch_gpu_miner(send_channel.clone(), recv, Arc::clone(&is_submitting),Arc::clone(&hashes_tried), gpus.clone(), i, workload.clone()), send)
+                    (
+                        Self::launch_gpu_miner(
+                            send_channel.clone(),
+                            recv,
+                            Arc::clone(&is_submitting),
+                            Arc::clone(&hashes_tried),
+                            gpus.clone(),
+                            i,
+                            workload.clone(),
+                        ),
+                        send,
+                    )
                 } else {
-                    (Self::launch_miner(send_channel.clone(), recv, Arc::clone(&is_submitting), Arc::clone(&hashes_tried)), send)
+                    (
+                        Self::launch_miner(
+                            send_channel.clone(),
+                            recv,
+                            Arc::clone(&is_submitting),
+                            Arc::clone(&hashes_tried),
+                        ),
+                        send,
+                    )
                 }
             })
             .unzip();
@@ -59,7 +82,7 @@ impl MinerManager {
             logger_handle: task::spawn(Self::log_hashrate(Arc::clone(&hashes_tried))),
             is_synced: true,
             hashes_tried,
-            is_submitting
+            is_submitting,
         }
     }
 
@@ -89,7 +112,7 @@ impl MinerManager {
         Ok(())
     }
 
-    pub fn notify_submission(&self){
+    pub fn notify_submission(&self) {
         let (lock, cond) = &*self.is_submitting;
         let mut submission_indicator = lock.lock().unwrap();
         *submission_indicator = false;
@@ -103,12 +126,13 @@ impl MinerManager {
         hashes_tried: Arc<AtomicU64>,
         gpus: Vec<u16>,
         thd_id: usize,
-        workload: Option<Vec<usize>>
+        workload: Option<Vec<usize>>,
     ) -> MinerHandler {
         std::thread::spawn(move || {
-            (| |{
+            (|| {
                 info!("Spawned Thread for GPU #{}", gpus[thd_id]);
-                let mut gpu_work = GPUWork::new(gpus[thd_id] as u32, workload.clone().and_then(|w| Some(w[thd_id])).or_else(|| None))?;
+                let mut gpu_work =
+                    GPUWork::new(gpus[thd_id] as u32, workload.clone().and_then(|w| Some(w[thd_id])).or_else(|| None))?;
                 //let mut gpu_work = gpu_ctx.get_worker(workload).unwrap();
                 let out_size: usize = gpu_work.get_output_size();
 
@@ -120,9 +144,15 @@ impl MinerManager {
                 let mut has_results = false;
                 let mut found = false;
                 let (lock, cond) = &*is_submitting;
-                loop{
+                loop {
                     {
-                        let _guard = cond.wait_timeout_while(lock.lock().unwrap(), Duration::from_millis(100), |submission_indicator| { *submission_indicator }).unwrap();
+                        let _guard = cond
+                            .wait_timeout_while(
+                                lock.lock().unwrap(),
+                                Duration::from_millis(100),
+                                |submission_indicator| *submission_indicator,
+                            )
+                            .unwrap();
                     }
                     // check block header?
                     if state.is_none() {
@@ -150,8 +180,9 @@ impl MinerManager {
                         for i in 0..gpu_work.get_output_size() {
                             if Uint256::from_le_bytes(hashes[i]) <= state_ref.target {
                                 if let Some(block) = state_ref.generate_block_if_pow(nonces[i]) {
-                                    let block_hash =
-                                        block.block_hash().expect("We just got it from the state, we should be able to hash it");
+                                    let block_hash = block
+                                        .block_hash()
+                                        .expect("We just got it from the state, we should be able to hash it");
                                     {
                                         let mut submission_indicator = lock.lock().unwrap();
                                         *submission_indicator = true;
@@ -186,22 +217,19 @@ impl MinerManager {
                             assert!(false);
                         }*/
 
-
                         hashes_tried.fetch_add(gpu_work.workload.try_into().unwrap(), Ordering::AcqRel);
                     }
 
                     gpu_work.calculate_heavy_hash();
                     has_results = true;
-
-
                 }
-            })().map_err(|e: Error| {
+            })()
+            .map_err(|e: Error| {
                 error!("GPU thread of #{} crashed: {}", thd_id, e.to_string());
                 e
             })
         })
     }
-
 
     fn launch_miner(
         send_channel: Sender<KaspadMessage>,
@@ -216,7 +244,13 @@ impl MinerManager {
                 let (lock, cond) = &*is_submitting;
                 loop {
                     {
-                        let _guard = cond.wait_timeout_while(lock.lock().unwrap(), Duration::from_millis(100), |submission_indicator| { *submission_indicator }).unwrap();
+                        let _guard = cond
+                            .wait_timeout_while(
+                                lock.lock().unwrap(),
+                                Duration::from_millis(100),
+                                |submission_indicator| *submission_indicator,
+                            )
+                            .unwrap();
                     }
                     if state.is_none() {
                         state = block_channel.blocking_recv().ok_or(TryRecvError::Disconnected).unwrap();
@@ -247,7 +281,8 @@ impl MinerManager {
                         }
                     }
                 }
-            })().map_err(|e: Error| {
+            })()
+            .map_err(|e: Error| {
                 error!("CPU thread crashed: {}", e.to_string());
                 e
             })
