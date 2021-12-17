@@ -16,17 +16,19 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v2
 
-      - name: Install stable toolchain
+      - name: Install nightly toolchain
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: stable
+          toolchain: nightly
           override: true
 
       - name: Install cuda
         uses: Jimver/cuda-toolkit@v0.2.5
         with:
           cuda: '11.2.2'
+          method: 'network'
+          sub-packages: '["nvcc", "visual_studio_integration"]'
 
       - name: Cache
         uses: actions/cache@v2
@@ -58,17 +60,19 @@ jobs:
         if: runner.os == 'Windows'
         run: git config --global core.autocrlf false
 
-      - name: Install stable toolchain
+      - name: Install nightly toolchain
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: stable
+          toolchain: nightly
           override: true
 
       - name: Install cuda
         uses: Jimver/cuda-toolkit@v0.2.5
         with:
           cuda: '11.2.2'
+          method: 'network'
+          sub-packages: '["nvcc", "visual_studio_integration"]'
 
       - name: Cache
         uses: actions/cache@v2
@@ -94,13 +98,20 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v2
 
-      - name: Install stable toolchain
+      - name: Install nightly toolchain
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: stable
+          toolchain: nightly
           override: true
           components: rustfmt, clippy
+
+      - name: Install cuda
+        uses: Jimver/cuda-toolkit@v0.2.5
+        with:
+          cuda: '11.2.2'
+          method: 'network'
+          sub-packages: '["nvcc", "visual_studio_integration"]'
 
       - name: Cache
         uses: actions/cache@v2

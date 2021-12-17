@@ -23,13 +23,15 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: stable
+          toolchain: nightly
           override: true
 
       - name: Install cuda
         uses: Jimver/cuda-toolkit@v0.2.5
         with:
           cuda: '11.2.2'
+          method: 'network'
+          sub-packages: '["nvcc", "visual_studio_integration"]'
 
       - name: Build on Linux
         if: runner.os == 'Linux'

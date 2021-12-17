@@ -26,7 +26,7 @@ pub struct Kernel<'kernel> {
     grid_size: u32,
 }
 
-impl Kernel<'kernel> {
+impl<'kernel> Kernel<'kernel> {
     pub fn new(module: Weak<Module>, name: &'kernel str, workload: Option<usize>) -> Result<Kernel<'kernel>, Error> {
         let func: Function;
         unsafe {
@@ -75,7 +75,7 @@ pub struct GPUWork<'gpu> {
     heavy_hash_kernel: Kernel<'gpu>,
 }
 
-impl GPUWork<'gpu> {
+impl<'gpu> GPUWork<'gpu> {
     pub fn new(device_id: u32, workload: Option<usize>) -> Result<Self, Error> {
         let device = Device::get_device(device_id).unwrap();
         let _context = Context::create_and_push(ContextFlags::MAP_HOST | ContextFlags::SCHED_AUTO, device)?;

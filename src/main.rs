@@ -1,4 +1,3 @@
-#![feature(in_band_lifetimes)]
 #![cfg_attr(all(test, feature = "bench"), feature(test))]
 
 use crate::cli::Opt;
