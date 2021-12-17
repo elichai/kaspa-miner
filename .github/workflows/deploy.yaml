@@ -31,7 +31,7 @@ jobs:
         with:
           cuda: '11.2.2'
           method: 'network'
-          sub-packages: '["nvcc", "visual_studio_integration"]'
+          sub-packages: '["nvcc"]'
 
       - name: Build on Linux
         if: runner.os == 'Linux'

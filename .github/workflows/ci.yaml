@@ -28,7 +28,7 @@ jobs:
         with:
           cuda: '11.2.2'
           method: 'network'
-          sub-packages: '["nvcc", "visual_studio_integration"]'
+          sub-packages: '["nvcc"]'
 
       - name: Cache
         uses: actions/cache@v2
@@ -72,7 +72,7 @@ jobs:
         with:
           cuda: '11.2.2'
           method: 'network'
-          sub-packages: '["nvcc", "visual_studio_integration"]'
+          sub-packages: '["nvcc"]'
 
       - name: Cache
         uses: actions/cache@v2
@@ -111,7 +111,7 @@ jobs:
         with:
           cuda: '11.2.2'
           method: 'network'
-          sub-packages: '["nvcc", "visual_studio_integration"]'
+          sub-packages: '["nvcc"]'
 
       - name: Cache
         uses: actions/cache@v2
