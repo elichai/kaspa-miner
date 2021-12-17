@@ -30,8 +30,6 @@ jobs:
         uses: Jimver/cuda-toolkit@v0.2.5
         with:
           cuda: '11.2.2'
-          method: 'network'
-          sub-packages: '["nvcc"]'
 
       - name: Build on Linux
         if: runner.os == 'Linux'
