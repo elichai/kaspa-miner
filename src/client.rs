@@ -42,9 +42,11 @@ impl KaspadHandler {
         &mut self,
         num_threads: usize,
         cuda_device: Vec<u16>,
-        workload: Option<Vec<usize>>,
+        workload: Vec<f32>,
+        workload_absolute: bool,
     ) -> Result<(), Error> {
-        let mut miner = MinerManager::new(self.send_channel.clone(), num_threads, cuda_device, workload);
+        let mut miner =
+            MinerManager::new(self.send_channel.clone(), num_threads, cuda_device, workload, workload_absolute);
         while let Some(msg) = self.stream.message().await? {
             match msg.payload {
                 Some(payload) => self.handle_message(payload, &mut miner).await?,
@@ -64,13 +66,10 @@ impl KaspadHandler {
                 (_, _, Some(e)) => warn!("GetTemplate returned with an error: {:?}", e),
                 (None, true, None) => error!("No block and No Error!"),
             },
-            Payload::SubmitBlockResponse(res) => {
-                miner.notify_submission();
-                match res.error {
-                    None => info!("block submitted successfully!"),
-                    Some(e) => warn!("Failed submitting block: {:?}", e),
-                }
-            }
+            Payload::SubmitBlockResponse(res) => match res.error {
+                None => info!("block submitted successfully!"),
+                Some(e) => warn!("Failed submitting block: {:?}", e),
+            },
             Payload::GetBlockResponse(msg) => {
                 if let Some(e) = msg.error {
                     return Err(e.message.into());

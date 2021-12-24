@@ -20,7 +20,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: nightly
+          toolchain: stable
           override: true
 
       - name: Install cuda
@@ -51,7 +51,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-latest, macos-latest, windows-latest ]
+        os: [ ubuntu-latest, windows-latest ]
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
@@ -64,15 +64,24 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: nightly
+          toolchain: stable
           override: true
 
-      - name: Install cuda
+      - name: Install CUDA Linux
+        if: runner.os == 'Linux'
         uses: Jimver/cuda-toolkit@v0.2.5
         with:
           cuda: '11.2.2'
           method: 'network'
           sub-packages: '["nvcc"]'
+
+      - name: Install CUDA Windows
+        if: runner.os == 'Windows'
+        uses: Jimver/cuda-toolkit@v0.2.5
+        with:
+          cuda: '11.5.1'
+          method: 'network'
+          sub-packages: '["nvcc", "visual_studio_integration"]'
 
       - name: Cache
         uses: actions/cache@v2
@@ -102,7 +111,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: nightly
+          toolchain: stable
           override: true
           components: rustfmt, clippy
 

@@ -9,6 +9,7 @@ use std::rc::{Rc, Weak};
 
 static PTX_61: &str = include_str!("../resources/kaspa-cuda-sm61.ptx");
 static PTX_30: &str = include_str!("../resources/kaspa-cuda-sm30.ptx");
+static PTX_20: &str = include_str!("../resources/kaspa-cuda-sm20.ptx");
 
 // Get this from the device!
 
@@ -27,7 +28,7 @@ pub struct Kernel<'kernel> {
 }
 
 impl<'kernel> Kernel<'kernel> {
-    pub fn new(module: Weak<Module>, name: &'kernel str, workload: Option<usize>) -> Result<Kernel<'kernel>, Error> {
+    pub fn new(module: Weak<Module>, name: &'kernel str) -> Result<Kernel<'kernel>, Error> {
         let func: Function;
         unsafe {
             func = module.as_ptr().as_ref().unwrap().get_function(name).or_else(|e| {
@@ -37,13 +38,11 @@ impl<'kernel> Kernel<'kernel> {
         }
         let (_, block_size) = func.suggested_launch_configuration(0, 0.into())?;
         let grid_size;
-        if workload.is_some() {
-            grid_size = (workload.unwrap() as u32 + block_size - 1) / block_size;
-        } else {
-            let device = CurrentContext::get_device()?;
-            let sm_count = device.get_attribute(DeviceAttribute::MultiprocessorCount)? as u32;
-            grid_size = sm_count * func.max_active_blocks_per_multiprocessor(block_size.into(), 0)?;
-        }
+
+        let device = CurrentContext::get_device()?;
+        let sm_count = device.get_attribute(DeviceAttribute::MultiprocessorCount)? as u32;
+        grid_size = sm_count * func.max_active_blocks_per_multiprocessor(block_size.into(), 0)?;
+
         Ok(Self { func, block_size, grid_size })
     }
 
@@ -76,13 +75,14 @@ pub struct GPUWork<'gpu> {
 }
 
 impl<'gpu> GPUWork<'gpu> {
-    pub fn new(device_id: u32, workload: Option<usize>) -> Result<Self, Error> {
+    pub fn new(device_id: u32, workload: f32, is_absolute: bool) -> Result<Self, Error> {
         let device = Device::get_device(device_id).unwrap();
         let _context = Context::create_and_push(ContextFlags::MAP_HOST | ContextFlags::SCHED_AUTO, device)?;
 
         let major = device.get_attribute(DeviceAttribute::ComputeCapabilityMajor)?;
         let minor = device.get_attribute(DeviceAttribute::ComputeCapabilityMinor)?;
         let _module: Rc<Module>;
+        info!("Device #{} compute version is {}.{}", device_id, major, minor);
         if major > 6 || (major == 6 && minor >= 1) {
             _module = Rc::new(Module::from_str(PTX_61).or_else(|e| {
                 error!("Error loading PTX: {}", e);
@@ -93,29 +93,35 @@ impl<'gpu> GPUWork<'gpu> {
                 error!("Error loading PTX: {}", e);
                 Result::Err(e)
             })?);
+        } else if major >= 3 {
+            _module = Rc::new(Module::from_str(PTX_20).or_else(|e| {
+                error!("Error loading PTX: {}", e);
+                Result::Err(e)
+            })?);
         } else {
             return Err("Cuda compute version not supported".into());
         }
 
         let stream = Stream::new(StreamFlags::NON_BLOCKING, None)?;
 
-        let mut rand_init = Kernel::new(Rc::downgrade(&_module), "init", workload)?;
-        let mut pow_hash_kernel = Kernel::new(Rc::downgrade(&_module), "pow_cshake", workload)?;
-        let mut matrix_mul_kernel = Kernel::new(Rc::downgrade(&_module), "matrix_mul", workload)?;
-        let mut heavy_hash_kernel = Kernel::new(Rc::downgrade(&_module), "heavy_hash_cshake", workload)?;
+        let mut rand_init = Kernel::new(Rc::downgrade(&_module), "init")?;
+        let mut pow_hash_kernel = Kernel::new(Rc::downgrade(&_module), "pow_cshake")?;
+        let mut matrix_mul_kernel = Kernel::new(Rc::downgrade(&_module), "matrix_mul")?;
+        let mut heavy_hash_kernel = Kernel::new(Rc::downgrade(&_module), "heavy_hash_cshake")?;
 
         let mut chosen_workload = 0 as usize;
-        if workload.is_some() {
-            chosen_workload = workload.unwrap()
+        if is_absolute {
+            chosen_workload = 1;
         } else {
-            for ker in [&rand_init, &pow_hash_kernel, &matrix_mul_kernel, &heavy_hash_kernel] {
+            for ker in [&pow_hash_kernel, &matrix_mul_kernel, &heavy_hash_kernel] {
                 let cur_workload = ker.get_workload();
                 if chosen_workload == 0 || chosen_workload < cur_workload as usize {
                     chosen_workload = cur_workload as usize;
                 }
             }
         }
-        info!("Chosen workload: {}", chosen_workload);
+        chosen_workload = (chosen_workload as f32 * workload) as usize;
+        info!("GPU #{} Chosen workload: {}", device_id, chosen_workload);
         for ker in [&mut rand_init, &mut pow_hash_kernel, &mut matrix_mul_kernel, &mut heavy_hash_kernel] {
             ker.set_workload(chosen_workload as u32);
         }
@@ -129,7 +135,7 @@ impl<'gpu> GPUWork<'gpu> {
         let final_hashes_buff = vec![[0u8; 32]; heavy_hash_kernel.grid_size as usize].as_slice().as_dbuf()?;
         let final_nonces_buff = vec![0u64; heavy_hash_kernel.grid_size as usize].as_slice().as_dbuf()?;
 
-        info!("Generating initial seed. This may take some time.");
+        info!("GPU #{} is generating initial seed. This may take some time.", device_id);
         let func = rand_init.func;
         let mut seeds = vec![1u64; 64 * chosen_workload];
         seeds.try_fill(&mut rand::thread_rng())?;
@@ -143,10 +149,10 @@ impl<'gpu> GPUWork<'gpu> {
             )?;
         }
         stream.synchronize().or_else(|e| {
-            error!("GPU Init failed: {}", rand_state.len());
+            error!("GPU #{} init failed: {}", device_id, rand_state.len());
             Err(e)
         })?;
-        info!("GPU Initialized");
+        info!("GPU #{} initialized", device_id);
         Ok(Self {
             _context,
             _module: Rc::clone(&_module),

@@ -6,6 +6,8 @@ use structopt::StructOpt;
 
 use crate::Error;
 
+const DEFAULT_WORKLOAD_SCALE: f32 = 32.;
+
 #[derive(Debug, StructOpt)]
 #[structopt(name = "kaspa-miner", about = "A Kaspa high performance CPU miner")]
 pub struct Opt {
@@ -39,8 +41,18 @@ pub struct Opt {
     pub mine_when_not_synced: bool,
     #[structopt(long = "cuda-device", help = "Which GPUs to use [default: all]")]
     pub cuda_device: Option<Vec<u16>>,
-    #[structopt(long = "workload", help = "How many nonces to generate at once [defualt: cuda recommendations]")]
-    pub workload: Option<Vec<usize>>,
+    #[structopt(
+        long = "workload",
+        help = "Ratio of nonces to GPU possible parrallel run [defualt: {DEFAULT_WORKLOAD_SCALE}]"
+    )]
+    pub workload: Option<Vec<f32>>,
+    #[structopt(long = "no-gpu", help = "Disable GPU miner [default: false]")]
+    pub no_gpu: bool,
+    #[structopt(
+        long = "workload-absolute",
+        help = "The values given by workload are not ratio, but absolute number of nonces [default: false]"
+    )]
+    pub workload_absolute: bool,
 }
 
 impl Opt {
@@ -60,9 +72,13 @@ impl Opt {
             self.cuda_device = Some((0..gpu_count).collect());
         }
 
-        if self.workload.is_some() && self.workload.clone().unwrap().len() < self.cuda_device.clone().unwrap().len() {
+        if self.workload.is_none() {
+            let fill_size = self.cuda_device.clone().unwrap().len();
+            let vec: Vec<f32> = iter::repeat(DEFAULT_WORKLOAD_SCALE).take(fill_size).collect();
+            self.workload = Some(vec);
+        } else if self.workload.clone().unwrap().len() < self.cuda_device.clone().unwrap().len() {
             let fill_size = self.cuda_device.clone().unwrap().len() - self.workload.clone().unwrap().len();
-            let fill_vec: Vec<usize> =
+            let fill_vec: Vec<f32> =
                 iter::repeat(*self.workload.clone().unwrap().last().unwrap()).take(fill_size).collect();
             self.workload = Some([self.workload.clone().unwrap(), fill_vec.clone()].concat());
         }

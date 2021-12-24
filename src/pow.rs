@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use crate::gpu::GPUWork;
@@ -15,8 +16,11 @@ mod hasher;
 mod heavy_hash;
 mod xoshiro;
 
+static STATE_ID: AtomicUsize = AtomicUsize::new(0);
+
 #[derive(Clone)]
 pub struct State {
+    pub id: usize,
     pub matrix: Arc<Matrix>,
     pub target: Uint256,
     pub pow_hash_header: Vec<u8>,
@@ -40,6 +44,7 @@ impl State {
         let matrix = Arc::new(Matrix::generate(pre_pow_hash));
 
         Ok(Self {
+            id: STATE_ID.fetch_add(1, Ordering::SeqCst),
             matrix,
             target,
             pow_hash_header: [

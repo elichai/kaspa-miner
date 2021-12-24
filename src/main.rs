@@ -47,6 +47,7 @@ async fn main() -> Result<(), Error> {
     env_logger::builder().filter_level(opt.log_level()).parse_default_env().init();
 
     let gpus = opt.cuda_device.unwrap();
+    let workload = opt.workload.unwrap();
     loop {
         let mut client =
             KaspadHandler::connect(opt.kaspad_address.clone(), opt.mining_address.clone(), opt.mine_when_not_synced)
@@ -54,7 +55,7 @@ async fn main() -> Result<(), Error> {
         client.client_send(NotifyBlockAddedRequestMessage {}).await?;
         client.client_get_block_template().await?;
 
-        client.listen(opt.num_threads.unwrap(), gpus.clone(), opt.workload.clone()).await?;
+        client.listen(opt.num_threads.unwrap(), gpus.clone(), workload.clone(), opt.workload_absolute).await?;
         warn!("Disconnected from kaspad, retrying");
     }
 }
