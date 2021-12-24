@@ -134,14 +134,26 @@ impl MinerManager {
         for i in 0u64.. {
             let now = ticker.tick().await;
             let hashes = hashes_tried.swap(0, Ordering::AcqRel);
-            let kilo_hashes = (hashes as f64) / 1000.0;
-            let rate = kilo_hashes / (now - last_instant).as_secs_f64();
+            let rate = (hashes as f64) / (now - last_instant).as_secs_f64();
             if hashes == 0 && i % 2 == 0 {
                 warn!("Kaspad is still not synced")
             } else if hashes != 0 {
-                info!("Current hashrate is: {:.2} Khash/s", rate);
+                let (rate, suffix) = Self::hash_suffix(rate);
+                info!("Current hashrate is: {:.2} {}", rate, suffix);
             }
             last_instant = now;
+        }
+    }
+
+    #[inline]
+    fn hash_suffix(n: f64) -> (f64, &'static str) {
+        match n {
+            n if n < 1_000.0 => (n, "hash/s"),
+            n if n < 1_000_000.0 => (n / 1_000.0, "Khash/s"),
+            n if n < 1_000_000_000.0 => (n / 1_000_000.0, "Mhash/s"),
+            n if n < 1_000_000_000_000.0 => (n / 1_000_000_000.0, "Ghash/s"),
+            n if n < 1_000_000_000_000_000.0 => (n / 1_000_000_000_000.0, "Thash/s"),
+            _ => (n, "hash/s"),
         }
     }
 }
