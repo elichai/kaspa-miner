@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 pub use crate::pow::hasher::HeaderHasher;
@@ -13,8 +14,11 @@ mod hasher;
 mod heavy_hash;
 mod xoshiro;
 
+static STATE_ID: AtomicUsize = AtomicUsize::new(0);
+
 #[derive(Clone)]
 pub struct State {
+    pub id: usize,
     matrix: Arc<Matrix>,
     pub nonce: u64,
     target: Uint256,
@@ -37,7 +41,7 @@ impl State {
         hasher.update(pre_pow_hash).update(header.timestamp.to_le_bytes()).update([0u8; 32]);
         let matrix = Arc::new(Matrix::generate(pre_pow_hash));
 
-        Ok(Self { matrix, nonce: 0, target, block: Arc::new(block), hasher })
+        Ok(Self { id: STATE_ID.fetch_add(1, Ordering::SeqCst), matrix, nonce: 0, target, block: Arc::new(block), hasher })
     }
 
     #[inline(always)]

@@ -5,8 +5,10 @@ use rand::{thread_rng, RngCore};
 use std::num::Wrapping;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::thread::sleep;
 use std::time::Duration;
-use tokio::sync::mpsc::{self, error::TryRecvError, Receiver, Sender};
+use tokio::sync::mpsc::Sender;
+use tokio::sync::watch;
 use tokio::task::{self, JoinHandle};
 use tokio::time::MissedTickBehavior;
 
@@ -15,7 +17,7 @@ type MinerHandler = std::thread::JoinHandle<Result<(), Error>>;
 #[allow(dead_code)]
 pub struct MinerManager {
     handles: Vec<MinerHandler>,
-    block_channels: Vec<Sender<Option<pow::State>>>,
+    block_channel: watch::Sender<Option<pow::State>>,
     send_channel: Sender<KaspadMessage>,
     logger_handle: JoinHandle<()>,
     is_synced: bool,
@@ -34,15 +36,15 @@ impl MinerManager {
     pub fn new(send_channel: Sender<KaspadMessage>, num_threads: u16) -> Self {
         info!("launching: {} miners", num_threads);
         let hashes_tried = Arc::new(AtomicU64::new(0));
-        let (handels, channels) = (0..num_threads)
+        let (send, recv) = watch::channel(None);
+        let handels = (0..num_threads)
             .map(|_| {
-                let (send, recv) = mpsc::channel(1);
-                (Self::launch_miner(send_channel.clone(), recv, Arc::clone(&hashes_tried)), send)
+                Self::launch_miner(send_channel.clone(), recv.clone(), Arc::clone(&hashes_tried))
             })
-            .unzip();
+            .collect();
         Self {
             handles: handels,
-            block_channels: channels,
+            block_channel: send,
             send_channel,
             logger_handle: task::spawn(Self::log_hashrate(Arc::clone(&hashes_tried))),
             is_synced: true,
@@ -66,23 +68,24 @@ impl MinerManager {
             }
         };
 
-        for c in &self.block_channels {
-            c.send(state.clone()).await.map_err(|e| e.to_string())?;
+        if !&self.block_channel.is_closed() {
+            self.block_channel.send(state.clone()).map_err(|_e| "Failed sending block to threads")?;
         }
         Ok(())
     }
 
     fn launch_miner(
         send_channel: Sender<KaspadMessage>,
-        mut block_channel: Receiver<Option<pow::State>>,
+        block_channel: watch::Receiver<Option<pow::State>>,
         hashes_tried: Arc<AtomicU64>,
     ) -> MinerHandler {
         let mut nonce = Wrapping(thread_rng().next_u64());
         std::thread::spawn(move || {
             let mut state = None;
             loop {
-                if state.is_none() {
-                    state = block_channel.blocking_recv().ok_or(TryRecvError::Disconnected)?;
+                while state.is_none() {
+                    sleep(Duration::from_millis(500));
+                    state = block_channel.borrow().clone();
                 }
                 let state_ref = match state.as_mut() {
                     Some(s) => s,
@@ -100,10 +103,10 @@ impl MinerManager {
                 hashes_tried.fetch_add(1, Ordering::AcqRel);
 
                 if nonce.0 % 128 == 0 {
-                    match block_channel.try_recv() {
-                        Ok(new_state) => state = new_state,
-                        Err(TryRecvError::Empty) => (),
-                        Err(TryRecvError::Disconnected) => return Err(TryRecvError::Disconnected.into()),
+                    if (&block_channel).borrow().is_none()
+                        || ((&block_channel).borrow().as_ref().unwrap().id != state.as_ref().unwrap().id)
+                    {
+                        state = (&block_channel).borrow().clone();
                     }
                 }
             }
