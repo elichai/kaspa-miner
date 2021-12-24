@@ -3,9 +3,8 @@ use crate::{pow, Error};
 use log::{info, warn};
 use rand::{thread_rng, RngCore};
 use std::num::Wrapping;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::thread::sleep;
 use std::time::Duration;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::watch;
@@ -22,6 +21,7 @@ pub struct MinerManager {
     logger_handle: JoinHandle<()>,
     is_synced: bool,
     hashes_tried: Arc<AtomicU64>,
+    current_state_id: AtomicUsize,
 }
 
 impl Drop for MinerManager {
@@ -47,6 +47,7 @@ impl MinerManager {
             logger_handle: task::spawn(Self::log_hashrate(Arc::clone(&hashes_tried))),
             is_synced: true,
             hashes_tried,
+            current_state_id: AtomicUsize::new(0),
         }
     }
 
@@ -54,7 +55,8 @@ impl MinerManager {
         let state = match block {
             Some(b) => {
                 self.is_synced = true;
-                Some(pow::State::new(b)?)
+                let id = self.current_state_id.fetch_add(1, Ordering::SeqCst);
+                Some(pow::State::new(id, b)?)
             }
             None => {
                 if !self.is_synced {
@@ -66,23 +68,22 @@ impl MinerManager {
             }
         };
 
-        if !&self.block_channel.is_closed() {
-            self.block_channel.send(state.clone()).map_err(|_e| "Failed sending block to threads")?;
-        }
+        self.block_channel.send(state.clone()).map_err(|_e| "Failed sending block to threads")?;
         Ok(())
     }
 
     fn launch_miner(
         send_channel: Sender<KaspadMessage>,
-        block_channel: watch::Receiver<Option<pow::State>>,
+        mut block_channel: watch::Receiver<Option<pow::State>>,
         hashes_tried: Arc<AtomicU64>,
     ) -> MinerHandler {
         let mut nonce = Wrapping(thread_rng().next_u64());
         std::thread::spawn(move || {
+            let mut rt = tokio::runtime::Runtime::new().unwrap();
             let mut state = None;
             loop {
-                while state.is_none() {
-                    sleep(Duration::from_millis(500));
+                if state.is_none() {
+                    rt.block_on(block_channel.changed())?;
                     state = block_channel.borrow().clone();
                 }
                 let state_ref = match state.as_mut() {
@@ -101,10 +102,9 @@ impl MinerManager {
                 hashes_tried.fetch_add(1, Ordering::AcqRel);
 
                 if nonce.0 % 128 == 0 {
-                    if (&block_channel).borrow().is_none()
-                        || ((&block_channel).borrow().as_ref().unwrap().id != state.as_ref().unwrap().id)
-                    {
-                        state = (&block_channel).borrow().clone();
+                    let borrowed_state = (&block_channel).borrow();
+                    if borrowed_state.is_none() || (borrowed_state.as_ref().unwrap().id != state.as_ref().unwrap().id) {
+                        state = borrowed_state.clone();
                     }
                 }
             }

@@ -1,4 +1,3 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 pub use crate::pow::hasher::HeaderHasher;
@@ -14,8 +13,6 @@ mod hasher;
 mod heavy_hash;
 mod xoshiro;
 
-static STATE_ID: AtomicUsize = AtomicUsize::new(0);
-
 #[derive(Clone)]
 pub struct State {
     pub id: usize,
@@ -29,7 +26,7 @@ pub struct State {
 
 impl State {
     #[inline]
-    pub fn new(block: RpcBlock) -> Result<Self, Error> {
+    pub fn new(id: usize, block: RpcBlock) -> Result<Self, Error> {
         let header = &block.header.as_ref().ok_or("Header is missing")?;
 
         let target = target::u256_from_compact_target(header.bits);
@@ -41,14 +38,7 @@ impl State {
         hasher.update(pre_pow_hash).update(header.timestamp.to_le_bytes()).update([0u8; 32]);
         let matrix = Arc::new(Matrix::generate(pre_pow_hash));
 
-        Ok(Self {
-            id: STATE_ID.fetch_add(1, Ordering::SeqCst),
-            matrix,
-            nonce: 0,
-            target,
-            block: Arc::new(block),
-            hasher,
-        })
+        Ok(Self { id, matrix, nonce: 0, target, block: Arc::new(block), hasher })
     }
 
     #[inline(always)]
