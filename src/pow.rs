@@ -1,18 +1,20 @@
 use std::sync::Arc;
 
 pub use crate::pow::hasher::HeaderHasher;
-use crate::pow::hasher::{Hasher, PowHasher};
-use crate::pow::heavy_hash::Matrix;
-use crate::proto::{RpcBlock, RpcBlockHeader};
 use crate::{
+    pow::{
+        hasher::{Hasher, PowHasher},
+        heavy_hash::Matrix,
+    },
+    proto::{RpcBlock, RpcBlockHeader},
     target::{self, Uint256},
     Error,
 };
 
 mod hasher;
 mod heavy_hash;
-mod xoshiro;
 mod keccak;
+mod xoshiro;
 
 #[derive(Clone)]
 pub struct State {
