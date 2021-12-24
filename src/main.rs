@@ -17,6 +17,7 @@ mod kaspad_messages;
 mod miner;
 mod pow;
 mod target;
+mod watch;
 
 pub mod proto {
     tonic::include_proto!("protowire");
