@@ -1,15 +1,16 @@
-use crate::proto::{KaspadMessage, RpcBlock};
-use crate::{pow, Error};
-use log::{info, warn};
-use rand::{thread_rng, RngCore};
 use std::num::Wrapping;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc::Sender;
-use tokio::sync::watch;
+
+use log::{info, warn};
+use rand::{thread_rng, RngCore};
+use tokio::sync::{mpsc::Sender, watch};
 use tokio::task::{self, JoinHandle};
 use tokio::time::MissedTickBehavior;
+
+use crate::proto::{KaspadMessage, RpcBlock};
+use crate::{pow, Error};
 
 type MinerHandler = std::thread::JoinHandle<Result<(), Error>>;
 
@@ -30,18 +31,21 @@ impl Drop for MinerManager {
     }
 }
 
+pub fn get_num_cpus(n_cpus: Option<u16>) -> u16 {
+    n_cpus.unwrap_or_else(|| {
+        num_cpus::get_physical().try_into().expect("Doesn't make sense to have more than 65,536 CPU cores")
+    })
+}
+
 const LOG_RATE: Duration = Duration::from_secs(10);
 
 impl MinerManager {
-    pub fn new(send_channel: Sender<KaspadMessage>, num_threads: u16) -> Self {
-        info!("launching: {} miners", num_threads);
+    pub fn new(send_channel: Sender<KaspadMessage>, n_cpus: Option<u16>) -> Self {
         let hashes_tried = Arc::new(AtomicU64::new(0));
         let (send, recv) = watch::channel(None);
-        let handels = (0..num_threads)
-            .map(|_| Self::launch_miner(send_channel.clone(), recv.clone(), Arc::clone(&hashes_tried)))
-            .collect();
+        let handles = Self::launch_cpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv, n_cpus).collect();
         Self {
-            handles: handels,
+            handles,
             block_channel: send,
             send_channel,
             logger_handle: task::spawn(Self::log_hashrate(Arc::clone(&hashes_tried))),
@@ -49,6 +53,18 @@ impl MinerManager {
             hashes_tried,
             current_state_id: AtomicUsize::new(0),
         }
+    }
+
+    fn launch_cpu_threads(
+        send_channel: Sender<KaspadMessage>,
+        hashes_tried: Arc<AtomicU64>,
+        work_channel: watch::Receiver<Option<pow::State>>,
+        n_cpus: Option<u16>,
+    ) -> impl Iterator<Item = MinerHandler> {
+        let n_cpus = get_num_cpus(n_cpus);
+        info!("launching: {} cpu miners", n_cpus);
+        (0..n_cpus)
+            .map(move |_| Self::launch_cpu_miner(send_channel.clone(), work_channel.clone(), Arc::clone(&hashes_tried)))
     }
 
     pub async fn process_block(&mut self, block: Option<RpcBlock>) -> Result<(), Error> {
@@ -72,14 +88,14 @@ impl MinerManager {
         Ok(())
     }
 
-    fn launch_miner(
+    pub fn launch_cpu_miner(
         send_channel: Sender<KaspadMessage>,
         mut block_channel: watch::Receiver<Option<pow::State>>,
         hashes_tried: Arc<AtomicU64>,
     ) -> MinerHandler {
         let mut nonce = Wrapping(thread_rng().next_u64());
         std::thread::spawn(move || {
-            let mut rt = tokio::runtime::Runtime::new().unwrap();
+            let rt = tokio::runtime::Runtime::new().unwrap();
             let mut state = None;
             loop {
                 if state.is_none() {

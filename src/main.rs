@@ -1,12 +1,15 @@
 #![cfg_attr(all(test, feature = "bench"), feature(test))]
 
+use std::error::Error as StdError;
+
+use log::warn;
+use structopt::StructOpt;
+
 use crate::cli::Opt;
 use crate::client::KaspadHandler;
+use crate::miner::MinerManager;
 use crate::proto::NotifyBlockAddedRequestMessage;
 use crate::target::Uint256;
-use log::warn;
-use std::error::Error as StdError;
-use structopt::StructOpt;
 
 mod cli;
 mod client;
@@ -36,8 +39,8 @@ async fn main() -> Result<(), Error> {
                 .await?;
         client.client_send(NotifyBlockAddedRequestMessage {}).await?;
         client.client_get_block_template().await?;
-
-        client.listen(opt.num_threads).await?;
+        let mut miner_manager = MinerManager::new(client.send_channel.clone(), opt.num_threads);
+        client.listen(&mut miner_manager).await?;
         warn!("Disconnected from kaspad, retrying");
     }
 }
