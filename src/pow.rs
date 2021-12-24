@@ -41,7 +41,14 @@ impl State {
         hasher.update(pre_pow_hash).update(header.timestamp.to_le_bytes()).update([0u8; 32]);
         let matrix = Arc::new(Matrix::generate(pre_pow_hash));
 
-        Ok(Self { id: STATE_ID.fetch_add(1, Ordering::SeqCst), matrix, nonce: 0, target, block: Arc::new(block), hasher })
+        Ok(Self {
+            id: STATE_ID.fetch_add(1, Ordering::SeqCst),
+            matrix,
+            nonce: 0,
+            target,
+            block: Arc::new(block),
+            hasher,
+        })
     }
 
     #[inline(always)]
