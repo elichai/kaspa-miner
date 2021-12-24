@@ -3,14 +3,13 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::proto::{KaspadMessage, RpcBlock};
+use crate::{pow, watch, Error};
 use log::{info, warn};
 use rand::{thread_rng, RngCore};
-use tokio::sync::{mpsc::Sender, watch};
+use tokio::sync::mpsc::Sender;
 use tokio::task::{self, JoinHandle};
 use tokio::time::MissedTickBehavior;
-
-use crate::proto::{KaspadMessage, RpcBlock};
-use crate::{pow, Error};
 
 type MinerHandler = std::thread::JoinHandle<Result<(), Error>>;
 
@@ -84,7 +83,7 @@ impl MinerManager {
             }
         };
 
-        self.block_channel.send(state.clone()).map_err(|_e| "Failed sending block to threads")?;
+        self.block_channel.send(state).map_err(|_e| "Failed sending block to threads")?;
         Ok(())
     }
 
@@ -95,12 +94,10 @@ impl MinerManager {
     ) -> MinerHandler {
         let mut nonce = Wrapping(thread_rng().next_u64());
         std::thread::spawn(move || {
-            let rt = tokio::runtime::Runtime::new().unwrap();
             let mut state = None;
             loop {
                 if state.is_none() {
-                    rt.block_on(block_channel.changed())?;
-                    state = block_channel.borrow().clone();
+                    state = block_channel.wait_for_change()?;
                 }
                 let state_ref = match state.as_mut() {
                     Some(s) => s,
@@ -118,9 +115,8 @@ impl MinerManager {
                 hashes_tried.fetch_add(1, Ordering::AcqRel);
 
                 if nonce.0 % 128 == 0 {
-                    let borrowed_state = (&block_channel).borrow();
-                    if borrowed_state.is_none() || (borrowed_state.as_ref().unwrap().id != state.as_ref().unwrap().id) {
-                        state = borrowed_state.clone();
+                    if let Some(new_state) = block_channel.get_changed()? {
+                        state = new_state;
                     }
                 }
             }
