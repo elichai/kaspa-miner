@@ -38,9 +38,7 @@ impl MinerManager {
         let hashes_tried = Arc::new(AtomicU64::new(0));
         let (send, recv) = watch::channel(None);
         let handels = (0..num_threads)
-            .map(|_| {
-                Self::launch_miner(send_channel.clone(), recv.clone(), Arc::clone(&hashes_tried))
-            })
+            .map(|_| Self::launch_miner(send_channel.clone(), recv.clone(), Arc::clone(&hashes_tried)))
             .collect();
         Self {
             handles: handels,
