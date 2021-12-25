@@ -15,11 +15,12 @@ typedef union _uint256_t {
 #define BLOCKDIM 1024
 #define MATRIX_SIZE 64
 #define HALF_MATRIX_SIZE 32
+#define QUARTER_MATRIX_SIZE 16
 #define HASH_HEADER_SIZE 72
 
 #define LT_U256(X,Y) (X.number[3] != Y.number[3] ? X.number[3] < Y.number[3] : X.number[2] != Y.number[2] ? X.number[2] < Y.number[2] : X.number[1] != Y.number[1] ? X.number[1] < Y.number[1] : X.number[0] < Y.number[0])
 
-__constant__ uint16_t matrix[MATRIX_SIZE][MATRIX_SIZE];
+__constant__ uint8_t matrix[MATRIX_SIZE][MATRIX_SIZE];
 __constant__ uint8_t hash_header[HASH_HEADER_SIZE];
 __constant__ uint256_t target;
 
@@ -28,16 +29,16 @@ __device__ __inline__ uint32_t amul4bit(uint32_t packed_vec1[32], uint32_t packe
     // We assume each 32 bits have four values: A0 B0 C0 D0
     unsigned int res = 0;
     #pragma unroll
-    for (int i=0; i<32; i++) {
+    for (int i=0; i<QUARTER_MATRIX_SIZE; i++) {
         #if __CUDA_ARCH__ >= 610
         asm("dp4a.u32.u32" " %0, %1, %2, %3;": "=r" (res): "r" (packed_vec1[i]), "r" (packed_vec2[i]), "r" (res));
         #else
         char4 &a4 = *((char4*)&packed_vec1[i]);
         char4 &b4 = *((char4*)&packed_vec2[i]);
         res += a4.x*b4.x;
-        //c += a4.y*b4.y; // In our code, the second and forth bytes are empty
+        res += a4.y*b4.y; // In our code, the second and forth bytes are empty
         res += a4.z*b4.z;
-        // c += a4.w*b4.w; // In our code, the second and forth bytes are empty
+        res += a4.w*b4.w; // In our code, the second and forth bytes are empty
         #endif
     }
 
@@ -62,12 +63,14 @@ extern "C" {
         //assert((rowId != 0) || (hashId != 0) );
 
         if (rowId < HALF_MATRIX_SIZE && hashId < hashes_len) {
-            ushort2 packed_hash[HALF_MATRIX_SIZE] = {0};
+            uchar4 packed_hash[QUARTER_MATRIX_SIZE] = {0};
             #pragma unroll
-            for (int i=0; i<HALF_MATRIX_SIZE; i++) {
-                packed_hash[i] = make_ushort2(
-                    (uint16_t)((hashes[hashId][i] & 0xF0) >> 4 ),
-                    (uint16_t)((hashes[hashId][i] & 0x0F))
+            for (int i=0; i<QUARTER_MATRIX_SIZE; i++) {
+                packed_hash[i] = make_uchar4(
+                    (uint16_t)((hashes[hashId][2*i] & 0xF0) >> 4 ),
+                    (uint16_t)((hashes[hashId][2*i] & 0x0F)),
+                    (uint16_t)((hashes[hashId][2*i+1] & 0xF0) >> 4 ),
+                    (uint16_t)((hashes[hashId][2*i+1] & 0x0F))
                 );
             }
             uint32_t product1 = amul4bit((uint32_t *)(matrix[(2*rowId)]), (uint32_t *)(packed_hash)) >> 10;

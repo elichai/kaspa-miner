@@ -23,6 +23,7 @@ mod xoshiro;
 pub struct State {
     pub id: usize,
     matrix: Arc<Matrix>,
+    u8matrix: Arc<[[u8;64];64]>,
     target: Uint256,
     pub pow_hash_header: [u8; 72],
     block: Arc<RpcBlock>,
@@ -42,6 +43,7 @@ impl State {
         // PRE_POW_HASH || TIME || 32 zero byte padding || NONCE
         let hasher = PowHasher::new(pre_pow_hash, header.timestamp as u64);
         let matrix = Arc::new(Matrix::generate(pre_pow_hash));
+        let u8matrix: Arc<[[u8;64];64]> = Arc::new(matrix.0.map(|row| row.map(|v| v as u8)));
         let mut pow_hash_header = [0u8; 72];
 
         pow_hash_header.copy_from_slice([
@@ -52,6 +54,7 @@ impl State {
         Ok(Self {
             id,
             matrix,
+            u8matrix,
             target,
             pow_hash_header,
             block: Arc::new(block),
@@ -87,7 +90,7 @@ impl State {
     #[inline(always)]
     pub fn pow_gpu(&self, gpu_work: &mut GPUWork) {
         gpu_work.calculate_pow_hash(&self.pow_hash_header, None);
-        gpu_work.calculate_matrix_mul(&self.matrix.0);
+        gpu_work.calculate_matrix_mul(&self.u8matrix);
         gpu_work.calculate_heavy_hash(&self.target.0);
     }
 }
