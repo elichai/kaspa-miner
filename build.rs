@@ -10,9 +10,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &["proto/rpc.proto", "proto/p2p.proto", "proto/messages.proto"],
             &["proto"],
         )?;
-    let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
-    if target_arch == "x86_64" {
+    let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
+    if target_arch == "x86_64" && target_os != "windows" && target_os != "macos"  {
         cc::Build::new().flag("-c").file("src/keccakf1600_x86-64.s").compile("libkeccak.a");
+    }
+    if target_arch == "x86_64" &&  target_os == "macos"  {
+        cc::Build::new().flag("-c").file("src/keccakf1600_x86-64-osx.s").compile("libkeccak.a");
+    }
+    if target_arch == "x86_64" &&  target_os == "windows"  {
+        cc::Build::new().flag("-c").file("src/keccakf1600_x86-64-mingw.s").compile("libkeccak.a");
     }
     Ok(())
 }
