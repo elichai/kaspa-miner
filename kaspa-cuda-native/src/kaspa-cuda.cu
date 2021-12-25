@@ -5,9 +5,7 @@
 #include <curand.h>
 #include <curand_kernel.h>
 
-typedef uint16_t MatrixRow[64];
 typedef uint8_t Hash[32];
-typedef uint64_t testme[64];
 
 typedef union _uint256_t {
     uint64_t number[4];
@@ -23,6 +21,7 @@ typedef union _uint256_t {
 
 __constant__ uint16_t matrix[MATRIX_SIZE][MATRIX_SIZE];
 __constant__ uint8_t hash_header[HASH_HEADER_SIZE];
+__constant__ uint256_t target;
 
 
 __device__ __inline__ uint32_t amul4bit(uint32_t packed_vec1[32], uint32_t packed_vec2[32]) {
@@ -97,7 +96,7 @@ extern "C" {
         }
     }
 
-    __global__ void heavy_hash_cshake(const uint64_t *nonces, const Hash *datas, const uint64_t data_len, uint64_t *final_nonces, Hash *hashes/*, Hash *all_hashes*/) {
+    __global__ void heavy_hash_cshake(const uint64_t *nonces, const Hash *datas, const uint64_t data_len, uint64_t *final_nonce/*, Hash *all_hashes*/) {
         assert(blockDim.x <= BLOCKDIM);
         uint64_t dataId = threadIdx.x + blockIdx.x*blockDim.x;
         if (dataId < data_len) {
@@ -111,33 +110,10 @@ extern "C" {
             // data
             memcpy(input +  136, datas[dataId], 32);
 
-            __shared__ uint256_t working_hashes[BLOCKDIM]; // Shared within the block
-            __shared__ uint64_t working_nonces[BLOCKDIM];
-
-            hash(working_hashes[threadIdx.x].hash, 32, input, 168, 136, 0x04);
-            working_nonces[threadIdx.x] = nonces[dataId];
-
-            //memcpy(all_hashes + dataId, working_hashes[threadIdx.x].hash, 32);
-            __syncthreads();
-
-            // Find the minimal hash - reduce step
-            for (uint64_t size = blockDim.x/2; size>0; size/=2) {
-                if (threadIdx.x<size) {
-                    if (
-                        (working_nonces[threadIdx.x+size] != 0) &&
-                        (LT_U256(working_hashes[threadIdx.x+size], working_hashes[threadIdx.x]))
-                        ){
-                        //memcpy(working_hashes[threadIdx.x].number, datas[dataId], 32);
-                        working_hashes[threadIdx.x] = working_hashes[threadIdx.x+size];
-                        working_nonces[threadIdx.x] = working_nonces[threadIdx.x+size];
-                    }
-                }
-                __syncthreads();
-            }
-            if (threadIdx.x == 0) {
-                final_nonces[blockIdx.x] = working_nonces[0];
-                //hashes[blockIdx.x] = working_hashes[0];
-                memcpy(hashes + blockIdx.x, working_hashes[0].hash, 32);
+            uint256_t working_hash;
+            hash(working_hash.hash, 32, input, 168, 136, 0x04);
+            if (LT_U256(working_hash, target)){
+                atomicCAS((unsigned long long int*) final_nonce, 0, (unsigned long long int) nonces[dataId]);
             }
         }
     }

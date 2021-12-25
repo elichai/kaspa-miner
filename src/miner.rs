@@ -138,43 +138,38 @@ impl MinerManager {
                 //let mut gpu_work = gpu_ctx.get_worker(workload).unwrap();
                 let out_size: usize = gpu_work.get_output_size();
 
-                let mut hashes = vec![[0u8; 32]; out_size];
-                let mut nonces = vec![0u64; out_size];
+                let mut nonces = vec![0u64; 1];
 
                 let mut state = None;
 
-                let mut has_results = false;
                 loop {
+                    nonces[0] = 0;
                     if state.is_none() {
                         state = block_channel.wait_for_change()?;
-                        has_results = false;
                     }
                     let state_ref = match state.as_mut() {
                         Some(s) => s,
                         None => continue,
                     };
 
+                    state_ref.pow_gpu(&mut gpu_work);
                     gpu_work.sync().unwrap();
 
-                    state_ref.start_pow_gpu(&mut gpu_work);
-                    gpu_work.copy_output_to(&mut hashes, &mut nonces)?;
-
-                    if has_results {
-                        for i in 0..gpu_work.get_output_size() {
-                            if Uint256::from_le_bytes(hashes[i]) <= state_ref.target {
-                                if let Some(block) = state_ref.generate_block_if_pow(nonces[i]) {
-                                    let block_hash = block
-                                        .block_hash()
-                                        .expect("We just got it from the state, we should be able to hash it");
-                                    send_channel.blocking_send(KaspadMessage::submit_block(block))?;
-                                    info!("Found a block: {:x}", block_hash);
-                                    state = None;
-                                    break;
-                                } else {
-                                    warn!("Something is wrong in GPU code!")
-                                }
-                            }
+                    gpu_work.copy_output_to(&mut nonces)?;
+                    if nonces[0] != 0 {
+                        if let Some(block) = state_ref.generate_block_if_pow(nonces[0]) {
+                            let block_hash = block
+                                .block_hash()
+                                .expect("We just got it from the state, we should be able to hash it");
+                            send_channel.blocking_send(KaspadMessage::submit_block(block))?;
+                            info!("Found a block: {:x}", block_hash);
+                            state = None;
+                            hashes_tried.fetch_add(gpu_work.workload.try_into().unwrap(), Ordering::AcqRel);
+                            continue;
+                        } else {
+                            warn!("Something is wrong in GPU code!")
                         }
+                    }
 
                         /*
                         info!("Output should be: {:02X?}", state_ref.calculate_pow(nonces[0]).to_le_bytes());
@@ -206,15 +201,11 @@ impl MinerManager {
                             assert!(false);
                         }*/
 
-                        hashes_tried.fetch_add(gpu_work.workload.try_into().unwrap(), Ordering::AcqRel);
-                    }
+                    hashes_tried.fetch_add(gpu_work.workload.try_into().unwrap(), Ordering::AcqRel);
 
-                    gpu_work.calculate_heavy_hash();
-                    has_results = true;
                     {
                         if let Some(new_state) = block_channel.get_changed()? {
                             state = new_state;
-                            has_results = false;
                         }
                     }
                 }

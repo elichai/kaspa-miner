@@ -67,8 +67,7 @@ pub struct GPUWork<'gpu> {
     nonces_buff: DeviceBuffer<u64>,
     pow_hashes_buff: DeviceBuffer<[u8; 32]>,
     matrix_mul_out_buff: DeviceBuffer<[u8; 32]>,
-    final_hashes_buff: DeviceBuffer<[u8; 32]>,
-    final_nonces_buff: DeviceBuffer<u64>,
+    final_nonce_buff: DeviceBuffer<u64>,
 
     pow_hash_kernel: Kernel<'gpu>,
     matrix_mul_kernel: Kernel<'gpu>,
@@ -133,8 +132,7 @@ impl<'gpu> GPUWork<'gpu> {
         let pow_hashes_buff = vec![[0u8; 32]; chosen_workload].as_slice().as_dbuf()?;
         let matrix_mul_out_buff = vec![[0u8; 32]; chosen_workload].as_slice().as_dbuf()?;
 
-        let final_hashes_buff = vec![[0u8; 32]; heavy_hash_kernel.grid_size as usize].as_slice().as_dbuf()?;
-        let final_nonces_buff = vec![0u64; heavy_hash_kernel.grid_size as usize].as_slice().as_dbuf()?;
+        let final_nonce_buff = vec![0u64; 1].as_slice().as_dbuf()?;
 
         info!("GPU #{} is generating initial seed. This may take some time.", device_id);
         let func = rand_init.func;
@@ -163,8 +161,7 @@ impl<'gpu> GPUWork<'gpu> {
             nonces_buff,
             pow_hashes_buff,
             matrix_mul_out_buff,
-            final_hashes_buff,
-            final_nonces_buff,
+            final_nonce_buff,
             pow_hash_kernel,
             matrix_mul_kernel,
             heavy_hash_kernel,
@@ -223,9 +220,12 @@ impl<'gpu> GPUWork<'gpu> {
     }
 
     #[inline(always)]
-    pub(crate) fn calculate_heavy_hash(&mut self) {
+    pub(crate) fn calculate_heavy_hash(&mut self, target: &[u64; 4]) {
         let func = &self.heavy_hash_kernel.func;
         let stream = &self.stream;
+        let mut target_gpu = self._module.get_global::<[u64; 4]>(&CString::new("target").unwrap()).unwrap();
+        target_gpu.copy_from(&target);
+        self.final_nonce_buff.copy_from(&[0u64;1]);
         unsafe {
             launch!(
                 func<<<
@@ -236,8 +236,7 @@ impl<'gpu> GPUWork<'gpu> {
                     self.nonces_buff.as_device_ptr(),
                     self.matrix_mul_out_buff.as_device_ptr(),
                     self.matrix_mul_out_buff.len(),
-                    self.final_nonces_buff.as_device_ptr(),
-                    self.final_hashes_buff.as_device_ptr(),
+                    self.final_nonce_buff.as_device_ptr(),
                 )
             )
             .unwrap(); // We see errors in sync
@@ -256,9 +255,8 @@ impl<'gpu> GPUWork<'gpu> {
     }
 
     #[inline(always)]
-    pub(crate) fn copy_output_to(&self, hashes: &mut Vec<[u8; 32]>, nonces: &mut Vec<u64>) -> Result<(), Error> {
-        self.final_hashes_buff.copy_to(hashes)?;
-        self.final_nonces_buff.copy_to(nonces)?;
+    pub(crate) fn copy_output_to(&self, nonces: &mut Vec<u64>) -> Result<(), Error> {
+        self.final_nonce_buff.copy_to(nonces)?;
         Ok(())
     }
 

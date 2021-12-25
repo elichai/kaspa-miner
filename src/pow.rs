@@ -23,7 +23,7 @@ mod xoshiro;
 pub struct State {
     pub id: usize,
     matrix: Arc<Matrix>,
-    pub target: Uint256,
+    target: Uint256,
     pub pow_hash_header: [u8; 72],
     block: Arc<RpcBlock>,
     // PRE_POW_HASH || TIME || 32 zero byte padding; without NONCE
@@ -85,9 +85,10 @@ impl State {
     }
 
     #[inline(always)]
-    pub fn start_pow_gpu(&self, gpu_work: &mut GPUWork) {
+    pub fn pow_gpu(&self, gpu_work: &mut GPUWork) {
         gpu_work.calculate_pow_hash(&self.pow_hash_header, None);
         gpu_work.calculate_matrix_mul(&self.matrix.0);
+        gpu_work.calculate_heavy_hash(&self.target.0);
     }
 }
 
