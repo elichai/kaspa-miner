@@ -65,7 +65,7 @@ extern "C" {
             ushort2 packed_hash[HALF_MATRIX_SIZE] = {0};
             #pragma unroll
             for (int i=0; i<HALF_MATRIX_SIZE; i++) {
-                packed_hash[2*i] = make_ushort2(
+                packed_hash[i] = make_ushort2(
                     (uint16_t)((hashes[hashId][i] & 0xF0) >> 4 ),
                     (uint16_t)((hashes[hashId][i] & 0x0F))
                 );
