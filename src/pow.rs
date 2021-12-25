@@ -16,12 +16,10 @@ mod hasher;
 mod heavy_hash;
 mod xoshiro;
 
-static STATE_ID: AtomicUsize = AtomicUsize::new(0);
-
 #[derive(Clone)]
 pub struct State {
     pub id: usize,
-    pub matrix: Arc<Matrix>,
+    matrix: Arc<Matrix>,
     pub target: Uint256,
     pub pow_hash_header: Vec<u8>,
     block: Arc<RpcBlock>,
@@ -31,7 +29,7 @@ pub struct State {
 
 impl State {
     #[inline]
-    pub fn new(block: RpcBlock) -> Result<Self, Error> {
+    pub fn new(id: usize, block: RpcBlock) -> Result<Self, Error> {
         let header = &block.header.as_ref().ok_or("Header is missing")?;
 
         let target = target::u256_from_compact_target(header.bits);
@@ -44,7 +42,7 @@ impl State {
         let matrix = Arc::new(Matrix::generate(pre_pow_hash));
 
         Ok(Self {
-            id: STATE_ID.fetch_add(1, Ordering::SeqCst),
+            id,
             matrix,
             target,
             pow_hash_header: [

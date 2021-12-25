@@ -3,7 +3,7 @@ use crate::{pow, Error};
 use log::{error, info, warn};
 use rand::{thread_rng, RngCore};
 use std::num::Wrapping;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread::sleep;
 use std::time::Duration;
@@ -25,7 +25,7 @@ pub struct MinerManager {
     logger_handle: JoinHandle<()>,
     is_synced: bool,
     hashes_tried: Arc<AtomicU64>,
-    //runtime: Arc<Mutex<HashMap<&'static str, u128>>>,
+    current_state_id: AtomicUsize,
 }
 
 impl Drop for MinerManager {
@@ -71,6 +71,7 @@ impl MinerManager {
             logger_handle: task::spawn(Self::log_hashrate(Arc::clone(&hashes_tried))),
             is_synced: true,
             hashes_tried,
+            current_state_id: AtomicUsize::new(0),
         }
     }
 
@@ -78,7 +79,8 @@ impl MinerManager {
         let state = match block {
             Some(b) => {
                 self.is_synced = true;
-                Some(pow::State::new(b).unwrap())
+                let id = self.current_state_id.fetch_add(1, Ordering::SeqCst);
+                Some(pow::State::new(id, b)?)
             }
             None => {
                 if !self.is_synced {
@@ -90,15 +92,13 @@ impl MinerManager {
             }
         };
 
-        if !&self.block_channel.is_closed() {
-            self.block_channel.send(state.clone());
-        }
+        self.block_channel.send(state.clone()).map_err(|_e| "Failed sending block to threads")?;
         Ok(())
     }
 
     fn launch_gpu_miner(
         send_channel: Sender<KaspadMessage>,
-        block_channel: watch::Receiver<Option<pow::State>>,
+        mut block_channel: watch::Receiver<Option<pow::State>>,
         hashes_tried: Arc<AtomicU64>,
         gpus: Vec<u16>,
         thd_id: usize,
@@ -106,6 +106,7 @@ impl MinerManager {
         workload_absolute: bool,
     ) -> MinerHandler {
         std::thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
             (|| {
                 info!("Spawned Thread for GPU #{}", gpus[thd_id]);
                 let mut gpu_work = GPUWork::new(gpus[thd_id] as u32, workload[thd_id], workload_absolute)?;
@@ -119,8 +120,8 @@ impl MinerManager {
 
                 let mut has_results = false;
                 loop {
-                    while state.is_none() {
-                        sleep(Duration::from_millis(500));
+                    if state.is_none() {
+                        rt.block_on(block_channel.changed())?;
                         state = block_channel.borrow().clone();
                     }
                     let state_ref = match state.as_mut() {
@@ -149,8 +150,16 @@ impl MinerManager {
                             }
                         }
 
-                        /*info!("Output should be: {}", state_ref.calculate_pow(nonces[0]).0[3]);
+                        /*
+                        info!("Output should be: {}", state_ref.calculate_pow(nonces[0]).0[3]);
                         info!("We got: {} (Nonces: {})", Uint256::from_le_bytes(hashes[0]).0[3], nonces[0]);
+                        assert!(state_ref.calculate_pow(nonces[0]).0[0] == Uint256::from_le_bytes(hashes[0]).0[0]);
+
+                        info!("Output should be: {}", state_ref.calculate_pow(nonces[nonces.len()-1]).0[3]);
+                        info!("We got: {} (Nonces: {})", Uint256::from_le_bytes(hashes[nonces.len()-1]).0[3], nonces[nonces.len()-1]);
+                        assert!(state_ref.calculate_pow(nonces[nonces.len()-1]).0[0] == Uint256::from_le_bytes(hashes[nonces.len()-1]).0[0]);
+                         */
+                        /*
                         if state_ref.calculate_pow(nonces[0]).0[0] != Uint256::from_le_bytes(hashes[0]).0[0] {
                             gpu_work.sync()?;
                             let nonce_vec = vec![nonces[0]; workload];
@@ -175,10 +184,9 @@ impl MinerManager {
                     gpu_work.calculate_heavy_hash();
                     has_results = true;
                     {
-                        if block_channel.borrow().is_none()
-                            || (&block_channel).borrow().as_ref().unwrap().id != state.as_ref().unwrap().id
-                        {
-                            state = (&block_channel).borrow().clone();
+                        let borrowed_state = (&block_channel).borrow();
+                        if borrowed_state.is_none() || (borrowed_state.as_ref().unwrap().id != state.as_ref().unwrap().id) {
+                            state = borrowed_state.clone();
                             has_results = false;
                         }
                     }
@@ -194,16 +202,17 @@ impl MinerManager {
 
     fn launch_miner(
         send_channel: Sender<KaspadMessage>,
-        block_channel: watch::Receiver<Option<pow::State>>,
+        mut block_channel: watch::Receiver<Option<pow::State>>,
         hashes_tried: Arc<AtomicU64>,
     ) -> MinerHandler {
         let mut nonce = Wrapping(thread_rng().next_u64());
         std::thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
             (|| {
                 let mut state = None;
                 loop {
-                    while state.is_none() {
-                        sleep(Duration::from_millis(500));
+                    if state.is_none() {
+                        rt.block_on(block_channel.changed())?;
                         state = block_channel.borrow().clone();
                     }
                     let state_ref = match state.as_mut() {
@@ -221,10 +230,9 @@ impl MinerManager {
                     hashes_tried.fetch_add(1, Ordering::AcqRel);
 
                     if nonce.0 % 128 == 0 {
-                        if (&block_channel).borrow().is_none()
-                            || ((&block_channel).borrow().as_ref().unwrap().id != state.as_ref().unwrap().id)
-                        {
-                            state = (&block_channel).borrow().clone();
+                        let borrowed_state = (&block_channel).borrow();
+                        if borrowed_state.is_none() || (borrowed_state.as_ref().unwrap().id != state.as_ref().unwrap().id) {
+                            state = borrowed_state.clone();
                         }
                     }
                 }
