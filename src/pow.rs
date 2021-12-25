@@ -86,8 +86,7 @@ impl State {
     #[inline(always)]
     pub fn start_pow_gpu(&self, gpu_work: &mut GPUWork) {
         gpu_work.calculate_pow_hash(&self.pow_hash_header, None);
-        let mut matrix_gpu = self.matrix.clone().0.as_slice().as_dbuf().unwrap();
-        gpu_work.calculate_matrix_mul(&mut matrix_gpu);
+        gpu_work.calculate_matrix_mul(&self.matrix.0);
     }
 }
 

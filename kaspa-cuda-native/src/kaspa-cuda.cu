@@ -15,8 +15,12 @@ typedef union _uint256_t {
 } uint256_t;
 
 #define BLOCKDIM 1024
+#define MATRIX_SIZE 64
+#define HALF_MATRIX_SIZE 32
 
 #define LT_U256(X,Y) (X.number[3] != Y.number[3] ? X.number[3] < Y.number[3] : X.number[2] != Y.number[2] ? X.number[2] < Y.number[2] : X.number[1] != Y.number[1] ? X.number[1] < Y.number[1] : X.number[0] < Y.number[0])
+
+__constant__ uint16_t matrix[MATRIX_SIZE][MATRIX_SIZE];
 
 
 __device__ __inline__ uint32_t amul4bit(uint32_t packed_vec1[32], uint32_t packed_vec2[32]) {
@@ -50,21 +54,21 @@ extern "C" {
         }
     }
 
-    __global__ void matrix_mul(const MatrixRow *rows, const uint64_t rows_len, const Hash *hashes, const uint64_t hashes_len, Hash *outs)
+    __global__ void matrix_mul(const Hash *hashes, const uint64_t hashes_len, Hash *outs)
     {
         int rowId = threadIdx.x + blockIdx.x*blockDim.x;
         int hashId = threadIdx.y + blockIdx.y*blockDim.y;
         //assert((rowId != 0) || (hashId != 0) );
 
-        if (rowId < rows_len/2 && hashId < hashes_len) {
+        if (rowId < HALF_MATRIX_SIZE && hashId < hashes_len) {
             uint16_t packed_hash[64] = {0};
             #pragma unroll
             for (int i=0; i<32; i++) {
                 packed_hash[2*i] = (uint16_t)((hashes[hashId][i] & 0xF0) >> 4 );
                 packed_hash[2*i+1] = (uint16_t)((hashes[hashId][i] & 0x0F));
             }
-            uint32_t product1 = amul4bit((uint32_t *)(rows[(2*rowId)]), (uint32_t *)(packed_hash)) >> 10;
-            uint32_t product2 = amul4bit((uint32_t *)(rows[(2*rowId+1)]), (uint32_t *)(packed_hash)) >> 10;
+            uint32_t product1 = amul4bit((uint32_t *)(matrix[(2*rowId)]), (uint32_t *)(packed_hash)) >> 10;
+            uint32_t product2 = amul4bit((uint32_t *)(matrix[(2*rowId+1)]), (uint32_t *)(packed_hash)) >> 10;
 
 
             outs[hashId][rowId] = hashes[hashId][rowId] ^ ((uint8_t)(product1 << 4) | (uint8_t)(product2));

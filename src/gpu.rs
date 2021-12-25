@@ -1,3 +1,4 @@
+use std::ffi::CString;
 use crate::Error;
 use cust::context::CurrentContext;
 use cust::device::DeviceAttribute;
@@ -198,9 +199,11 @@ impl<'gpu> GPUWork<'gpu> {
     }
 
     #[inline(always)]
-    pub(crate) fn calculate_matrix_mul(&mut self, matrix_gpu: &mut DeviceBuffer<[u16; 64]>) {
+    pub(crate) fn calculate_matrix_mul(&mut self, matrix: &[[u16; 64]; 64]) {
         let func = &self.matrix_mul_kernel.func;
         let stream = &self.stream;
+        let mut matrix_gpu = self._module.get_global::<[[u16; 64]; 64]>(&CString::new("matrix").unwrap()).unwrap();
+        matrix_gpu.copy_from(matrix);
         unsafe {
             launch!(
                 func<<<
@@ -208,8 +211,6 @@ impl<'gpu> GPUWork<'gpu> {
                     (1, self.matrix_mul_kernel.block_size),
                     0, stream
                 >>>(
-                        matrix_gpu.as_device_ptr(),
-                        matrix_gpu.len(),
                         self.pow_hashes_buff.as_device_ptr(),
                         self.pow_hashes_buff.len(),
                         self.matrix_mul_out_buff.as_device_ptr()
