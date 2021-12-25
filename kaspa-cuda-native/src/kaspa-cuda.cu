@@ -62,11 +62,13 @@ extern "C" {
         //assert((rowId != 0) || (hashId != 0) );
 
         if (rowId < HALF_MATRIX_SIZE && hashId < hashes_len) {
-            uint16_t packed_hash[64] = {0};
+            ushort2 packed_hash[HALF_MATRIX_SIZE] = {0};
             #pragma unroll
-            for (int i=0; i<32; i++) {
-                packed_hash[2*i] = (uint16_t)((hashes[hashId][i] & 0xF0) >> 4 );
-                packed_hash[2*i+1] = (uint16_t)((hashes[hashId][i] & 0x0F));
+            for (int i=0; i<HALF_MATRIX_SIZE; i++) {
+                packed_hash[2*i] = make_ushort2(
+                    (uint16_t)((hashes[hashId][i] & 0xF0) >> 4 ),
+                    (uint16_t)((hashes[hashId][i] & 0x0F))
+                );
             }
             uint32_t product1 = amul4bit((uint32_t *)(matrix[(2*rowId)]), (uint32_t *)(packed_hash)) >> 10;
             uint32_t product2 = amul4bit((uint32_t *)(matrix[(2*rowId+1)]), (uint32_t *)(packed_hash)) >> 10;
