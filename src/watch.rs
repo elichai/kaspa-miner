@@ -1,8 +1,7 @@
-use parking_lot::{Condvar, Mutex, RwLock};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::Arc;
+
+use sync::{Arc, AtomicBool, AtomicUsize, Condvar, Mutex, Ordering, RwLock};
 
 // The value is in a RWLock, all receivers observe it using a read lock + clone
 // id is used to check if there's a new value before reading the old value.
@@ -159,7 +158,7 @@ impl<T: Clone> Drop for Receiver<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ChannelClosed(());
 
 impl Display for ChannelClosed {
@@ -169,3 +168,287 @@ impl Display for ChannelClosed {
 }
 
 impl Error for ChannelClosed {}
+
+mod sync {
+    #[cfg(all(feature = "parking_lot", feature = "shuttle"))]
+    compile_error!("Can't use sync primitives both from parking_lot and from shuttle");
+
+    #[cfg(feature = "parking_lot")]
+    use parking_lot::{
+        Condvar as CondvarInternal, Mutex as MutexInternal, MutexGuard, RwLock as RwLockInternal, RwLockReadGuard,
+        RwLockWriteGuard,
+    };
+
+    #[cfg(feature = "shuttle")]
+    use shuttle::sync::{
+        Condvar as CondvarInternal, Mutex as MutexInternal, MutexGuard, RwLock as RwLockInternal, RwLockReadGuard,
+        RwLockWriteGuard,
+    };
+    #[cfg(not(any(feature = "shuttle", feature = "parking_lot")))]
+    use std::sync::{
+        Condvar as CondvarInternal, Mutex as MutexInternal, MutexGuard, RwLock as RwLockInternal, RwLockReadGuard,
+        RwLockWriteGuard,
+    };
+
+    #[cfg(feature = "shuttle")]
+    pub use shuttle::{
+        sync::{
+            atomic::{AtomicBool, AtomicUsize, Ordering},
+            Arc, Barrier,
+        },
+        thread,
+    };
+    #[cfg(not(feature = "shuttle"))]
+    pub use std::{
+        sync::{
+            atomic::{AtomicBool, AtomicUsize, Ordering},
+            Arc, Barrier,
+        },
+        thread,
+    };
+
+    pub struct Mutex<T>(MutexInternal<T>);
+    impl<T> Mutex<T> {
+        pub fn new(val: T) -> Self {
+            Self(MutexInternal::new(val))
+        }
+
+        pub fn lock(&self) -> MutexGuard<T> {
+            #[cfg(not(feature = "parking_lot"))]
+            return self.0.lock().unwrap_or_else(|e| e.into_inner());
+            #[cfg(feature = "parking_lot")]
+            return self.0.lock();
+        }
+    }
+
+    pub struct Condvar(CondvarInternal);
+
+    impl Condvar {
+        pub fn new() -> Self {
+            Self(CondvarInternal::new())
+        }
+
+        #[allow(unused_mut)]
+        pub fn wait<'a, T>(&self, mut guard: MutexGuard<'a, T>) -> MutexGuard<'a, T> {
+            #[cfg(not(feature = "parking_lot"))]
+            return self.0.wait(guard).unwrap_or_else(|e| e.into_inner());
+            #[cfg(feature = "parking_lot")]
+            {
+                self.0.wait(&mut guard);
+                guard
+            }
+        }
+
+        pub fn notify_all(&self) {
+            self.0.notify_all();
+        }
+    }
+
+    pub struct RwLock<T>(RwLockInternal<T>);
+    impl<T> RwLock<T> {
+        pub fn new(val: T) -> Self {
+            Self(RwLockInternal::new(val))
+        }
+
+        pub fn read(&self) -> RwLockReadGuard<T> {
+            #[cfg(not(feature = "parking_lot"))]
+            return self.0.read().unwrap_or_else(|e| e.into_inner());
+            #[cfg(feature = "parking_lot")]
+            return self.0.read();
+        }
+
+        pub fn write(&self) -> RwLockWriteGuard<T> {
+            #[cfg(not(feature = "parking_lot"))]
+            return self.0.write().unwrap_or_else(|e| e.into_inner());
+            #[cfg(feature = "parking_lot")]
+            return self.0.write();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::watch::{
+        self,
+        sync::{thread, Arc, Barrier},
+        ChannelClosed,
+    };
+
+    #[test]
+    fn test_receiver_count() {
+        multi_test_runner(
+            || {
+                let (rx, tx) = watch::channel("One");
+                assert_eq!(rx.shared.receiver_count(), 1);
+                assert_eq!(tx.shared.receiver_count(), 1);
+                let tx2 = tx.clone();
+                assert_eq!(rx.shared.receiver_count(), 2);
+                assert_eq!(tx.shared.receiver_count(), 2);
+                assert_eq!(tx2.shared.receiver_count(), 2);
+                let tx3 = tx.clone();
+                assert_eq!(rx.shared.receiver_count(), 3);
+                assert_eq!(tx.shared.receiver_count(), 3);
+                assert_eq!(tx2.shared.receiver_count(), 3);
+                assert_eq!(tx3.shared.receiver_count(), 3);
+                drop(tx2);
+                assert_eq!(rx.shared.receiver_count(), 2);
+                assert_eq!(tx.shared.receiver_count(), 2);
+                assert_eq!(tx3.shared.receiver_count(), 2);
+                drop(tx3);
+                drop(tx);
+                assert_eq!(rx.shared.receiver_count(), 0);
+                assert_eq!(rx.send("Two"), Err(ChannelClosed(())));
+            },
+            false,
+        )
+    }
+
+    #[test]
+    fn test_sender_dropped() {
+        multi_test_runner(
+            || {
+                let (rx, mut tx) = watch::channel("One");
+                assert_eq!(rx.shared.receiver_count(), 1);
+                assert_eq!(tx.shared.receiver_count(), 1);
+                assert!(rx.shared.sender_alive());
+                assert!(tx.shared.sender_alive());
+                drop(rx);
+                assert_eq!(tx.shared.receiver_count(), 1);
+                assert!(!tx.shared.sender_alive());
+                assert_eq!(tx.get_changed(), Err(ChannelClosed(())));
+            },
+            false,
+        )
+    }
+
+    #[test]
+    fn test_sending_val() {
+        multi_test_runner(
+            || {
+                let (rx, mut tx) = watch::channel("One");
+                let mut tx2 = tx.clone();
+                assert_eq!(tx.get_changed(), Ok(Some("One")));
+                assert_eq!(tx.get_changed(), Ok(None));
+                let mut tx3 = tx.clone();
+                assert_eq!(tx3.get_changed(), Ok(None));
+                assert_eq!(tx2.get_changed(), Ok(Some("One")));
+                rx.send("Two").unwrap();
+                assert_eq!(tx.get_changed(), Ok(Some("Two")));
+                assert_eq!(tx2.get_changed(), Ok(Some("Two")));
+                assert_eq!(tx3.get_changed(), Ok(Some("Two")));
+            },
+            false,
+        )
+    }
+
+    #[test]
+    fn test_sending_val_waiting() {
+        multi_test_runner(
+            || {
+                let (rx, mut tx) = watch::channel("One");
+                let mut tx2 = tx.clone();
+                assert_eq!(tx.wait_for_change(), Ok("One"));
+                assert_eq!(tx.get_changed(), Ok(None));
+                let mut tx3 = tx.clone();
+                assert_eq!(tx3.get_changed(), Ok(None));
+                assert_eq!(tx2.wait_for_change(), Ok("One"));
+                rx.send("Two").unwrap();
+                assert_eq!(tx.wait_for_change(), Ok("Two"));
+                assert_eq!(tx2.wait_for_change(), Ok("Two"));
+                assert_eq!(tx3.wait_for_change(), Ok("Two"));
+            },
+            false,
+        )
+    }
+
+    fn multi_test_runner(f: impl Fn() + Sync + Send + 'static, parallel: bool) {
+        let mut iters = if parallel { 10_000 } else { 5 };
+        if !cfg!(debug_assertions) {
+            iters *= 10;
+        }
+        if cfg!(feature = "parking_lot") || cfg!(feature = "shuttle") {
+            iters *= 10;
+        }
+        #[cfg(feature = "shuttle")]
+        shuttle::check_random(f, iters);
+        #[cfg(not(feature = "shuttle"))]
+        for _ in 0..iters {
+            f();
+        }
+    }
+
+    #[test]
+    fn test_waiting_on_val() {
+        multi_test_runner(
+            || {
+                let (rx, mut tx) = watch::channel("One");
+                assert_eq!(tx.get_changed(), Ok(Some("One")));
+                let mut tx2 = tx.clone();
+                assert_eq!(tx.get_changed(), Ok(None));
+                assert_eq!(tx2.get_changed(), Ok(None));
+                let barrier = Arc::new(Barrier::new(3));
+                let barrier_clone = Arc::clone(&barrier);
+                let handle1 = thread::spawn(move || {
+                    barrier_clone.wait();
+                    assert_eq!(tx.wait_for_change(), Ok("Two"));
+                });
+                let barrier_clone = Arc::clone(&barrier);
+                let handle2 = thread::spawn(move || {
+                    barrier_clone.wait();
+                    assert_eq!(tx2.wait_for_change(), Ok("Two"));
+                });
+                barrier.wait();
+                rx.send("Two").unwrap();
+
+                handle1.join().unwrap();
+                handle2.join().unwrap();
+                assert_eq!(rx.shared.receiver_count(), 0);
+            },
+            true,
+        )
+    }
+
+    #[test]
+    fn test_rx_drop_before_waiting() {
+        multi_test_runner(
+            || {
+                let (rx, mut tx) = watch::channel("One");
+                assert_eq!(tx.get_changed(), Ok(Some("One")));
+                assert_eq!(tx.get_changed(), Ok(None));
+                drop(rx);
+                assert_eq!(tx.wait_for_change(), Err(ChannelClosed(())));
+            },
+            false,
+        )
+    }
+
+    #[test]
+    fn test_rx_drop_while_waiting() {
+        multi_test_runner(
+            || {
+                let (rx, mut tx) = watch::channel("One");
+                assert_eq!(tx.get_changed(), Ok(Some("One")));
+                assert_eq!(tx.get_changed(), Ok(None));
+                let tx2 = tx.clone();
+                assert_eq!(tx2.shared.receiver_count(), 2);
+                let barrier = Arc::new(Barrier::new(3));
+                let barrier_clone = Arc::clone(&barrier);
+                let handle1 = thread::spawn(move || {
+                    barrier_clone.wait();
+                    assert_eq!(tx.wait_for_change(), Err(ChannelClosed(())));
+                });
+                let barrier_clone = Arc::clone(&barrier);
+                let handle2 = thread::spawn(move || {
+                    barrier_clone.wait();
+                    drop(rx);
+                });
+                barrier.wait();
+                handle1.join().unwrap();
+                handle2.join().unwrap();
+                assert!(!tx2.shared.sender_alive());
+                assert_eq!(tx2.shared.receiver_count(), 1);
+            },
+            true,
+        )
+    }
+}
