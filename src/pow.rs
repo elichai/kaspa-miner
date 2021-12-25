@@ -24,7 +24,7 @@ pub struct State {
     pub id: usize,
     matrix: Arc<Matrix>,
     pub target: Uint256,
-    pub pow_hash_header: Vec<u8>,
+    pub pow_hash_header: [u8; 72],
     block: Arc<RpcBlock>,
     // PRE_POW_HASH || TIME || 32 zero byte padding; without NONCE
     hasher: PowHasher,
@@ -42,17 +42,18 @@ impl State {
         // PRE_POW_HASH || TIME || 32 zero byte padding || NONCE
         let hasher = PowHasher::new(pre_pow_hash, header.timestamp as u64);
         let matrix = Arc::new(Matrix::generate(pre_pow_hash));
+        let mut pow_hash_header = [0u8; 72];
 
+        pow_hash_header.copy_from_slice([
+            pre_pow_hash.to_le_bytes().as_slice(),
+            header.timestamp.to_le_bytes().as_slice(),
+            [0u8; 32].as_slice(),
+        ].concat().as_slice());
         Ok(Self {
             id,
             matrix,
             target,
-            pow_hash_header: [
-                pre_pow_hash.to_le_bytes().as_slice(),
-                header.timestamp.to_le_bytes().as_slice(),
-                [0u8; 32].as_slice(),
-            ]
-            .concat(),
+            pow_hash_header,
             block: Arc::new(block),
             hasher,
         })

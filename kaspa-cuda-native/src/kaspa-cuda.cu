@@ -17,10 +17,12 @@ typedef union _uint256_t {
 #define BLOCKDIM 1024
 #define MATRIX_SIZE 64
 #define HALF_MATRIX_SIZE 32
+#define HASH_HEADER_SIZE 72
 
 #define LT_U256(X,Y) (X.number[3] != Y.number[3] ? X.number[3] < Y.number[3] : X.number[2] != Y.number[2] ? X.number[2] < Y.number[2] : X.number[1] != Y.number[1] ? X.number[1] < Y.number[1] : X.number[0] < Y.number[0])
 
 __constant__ uint16_t matrix[MATRIX_SIZE][MATRIX_SIZE];
+__constant__ uint8_t hash_header[HASH_HEADER_SIZE];
 
 
 __device__ __inline__ uint32_t amul4bit(uint32_t packed_vec1[32], uint32_t packed_vec2[32]) {
@@ -75,7 +77,7 @@ extern "C" {
             }
     }
 
-    __global__ void pow_cshake(const uint8_t *header, uint64_t *nonces, const uint64_t nonces_len, Hash *hashes, const bool generate, curandStateSobol64_t* states) {
+    __global__ void pow_cshake(uint64_t *nonces, const uint64_t nonces_len, Hash *hashes, const bool generate, curandStateSobol64_t* states) {
         // assuming header_len is 72
         int nonceId = threadIdx.x + blockIdx.x*blockDim.x;
         if (nonceId < nonces_len) {
@@ -87,7 +89,7 @@ extern "C" {
                 0x50, 0x72, 0x6f, 0x6f, 0x66, 0x4f, 0x66, 0x57, 0x6f, 0x72, 0x6b, 0x48, 0x61, 0x73, 0x68, // ProofOfWorkHash
             };
             // header
-            memcpy(input +  136, header, 72);
+            memcpy(input +  136, hash_header, HASH_HEADER_SIZE);
             // data
             // TODO: check endianity?
             memcpy(input +  208, (uint8_t *)(nonces + nonceId), 8);

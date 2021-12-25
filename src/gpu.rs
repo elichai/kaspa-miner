@@ -172,7 +172,7 @@ impl<'gpu> GPUWork<'gpu> {
     }
 
     #[inline(always)]
-    pub(crate) fn calculate_pow_hash(&mut self, hash_header: &Vec<u8>, nonces: Option<&Vec<u64>>) {
+    pub(crate) fn calculate_pow_hash(&mut self, hash_header: &[u8; 72], nonces: Option<&Vec<u64>>) {
         let func = &self.pow_hash_kernel.func;
         let stream = &self.stream;
         let mut generate = true;
@@ -180,13 +180,14 @@ impl<'gpu> GPUWork<'gpu> {
             self.nonces_buff.copy_from(inner).unwrap();
             generate = false;
         }
+        let mut hash_header_gpu = self._module.get_global::<[u8; 72]>(&CString::new("hash_header").unwrap()).unwrap();
+        hash_header_gpu.copy_from(hash_header);
         unsafe {
             launch!(
                 func<<<
                     self.pow_hash_kernel.grid_size, self.pow_hash_kernel.block_size,
                     0, stream
                 >>>(
-                    hash_header.as_slice().as_dbuf().unwrap().as_device_ptr(),
                     self.nonces_buff.as_device_ptr(),
                     self.nonces_buff.len(),
                     self.pow_hashes_buff.as_device_ptr(),
