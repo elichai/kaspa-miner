@@ -54,12 +54,17 @@ impl<T: Clone> Shared<T> {
     fn clone_value(&self) -> T {
         self.value.read().clone()
     }
+
+    fn wake_up_threads(&self) {
+        let _lock = self.wait_for_change.lock();
+        self.notify_change.notify_all();
+    }
 }
 
 pub fn channel<T: Clone>(init: T) -> (Sender<T>, Receiver<T>) {
     let shared = Arc::new(Shared {
         value: RwLock::new(init),
-        id: AtomicUsize::new(0),
+        id: AtomicUsize::new(1),
         receivers_count: AtomicUsize::new(1),
         wait_for_change: Mutex::new(()),
         notify_change: Condvar::new(),
@@ -84,7 +89,8 @@ impl<T: Clone> Sender<T> {
         // Signal that the value has been changed.
         self.shared.increment_id();
         // Notify in-case any receiver is waiting
-        self.shared.notify_change.notify_all();
+        // Make sure no one is a moment before waiting
+        self.shared.wake_up_threads();
         Ok(())
     }
 }
@@ -94,7 +100,7 @@ impl<T: Clone> Drop for Sender<T> {
         // Mark sender as dropped
         self.shared.drop_sender();
         // Make sure all waiting receivers will unlock and see that the sender was dropped.
-        self.shared.notify_change.notify_all();
+        self.shared.wake_up_threads();
     }
 }
 
@@ -105,23 +111,32 @@ pub struct Receiver<T: Clone> {
 
 impl<T: Clone> Receiver<T> {
     pub fn get_changed(&mut self) -> Result<Option<T>, ChannelClosed> {
-        if !self.shared.sender_alive() {
+        Self::get_changed_internal(&mut self.last_observed, &self.shared)
+    }
+
+    fn get_changed_internal(last_observed: &mut usize, shared: &Shared<T>) -> Result<Option<T>, ChannelClosed> {
+        if !shared.sender_alive() {
             return Err(ChannelClosed(()));
         }
-        let new_id = self.shared.id();
-        if self.last_observed == new_id {
+        let new_id = shared.id();
+        if *last_observed == new_id {
             return Ok(None);
         }
-        self.last_observed = new_id;
-        Ok(Some(self.shared.clone_value()))
+        *last_observed = new_id;
+        Ok(Some(shared.clone_value()))
     }
 
     pub fn wait_for_change(&mut self) -> Result<T, ChannelClosed> {
         if let Some(v) = self.get_changed()? {
             return Ok(v);
         }
+        let lock = self.shared.wait_for_change.lock();
+        // Check if while acquiring the lock something changed.
+        if let Some(v) = Self::get_changed_internal(&mut self.last_observed, &self.shared)? {
+            return Ok(v);
+        }
         // wait for a notification of a new value
-        self.shared.notify_change.wait(&mut self.shared.wait_for_change.lock());
+        let _ = self.shared.notify_change.wait(lock);
         // Recheck if the sender is alive as it might've changed while waiting
         if !self.shared.sender_alive() {
             return Err(ChannelClosed(()));
