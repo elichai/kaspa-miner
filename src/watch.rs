@@ -39,7 +39,11 @@ impl<T: Clone> Shared<T> {
     }
 
     fn replace_value(&self, val: T) {
-        *self.value.write() = val;
+        let mut lock = self.value.write();
+        *lock = val;
+        // Signal that the value has been changed, we do that while still holding the write lock
+        // in order to make sure that a reader can't observe a new value with an old ID.
+        self.increment_id();
     }
 
     fn increment_id(&self) -> usize {
@@ -55,6 +59,7 @@ impl<T: Clone> Shared<T> {
     }
 
     fn wake_up_threads(&self) {
+        // Make sure no receiver is "almost" waiting (holding the lock but hasn't entered the Condvar yet)
         let _lock = self.wait_for_change.lock();
         self.notify_change.notify_all();
     }
@@ -85,8 +90,6 @@ impl<T: Clone> Sender<T> {
             return Err(ChannelClosed(()));
         }
         self.shared.replace_value(value);
-        // Signal that the value has been changed.
-        self.shared.increment_id();
         // Notify in-case any receiver is waiting
         // Make sure no one is a moment before waiting
         self.shared.wake_up_threads();
@@ -109,10 +112,12 @@ pub struct Receiver<T: Clone> {
 }
 
 impl<T: Clone> Receiver<T> {
+    #[inline(always)]
     pub fn get_changed(&mut self) -> Result<Option<T>, ChannelClosed> {
         Self::get_changed_internal(&mut self.last_observed, &self.shared)
     }
 
+    #[inline(always)]
     fn get_changed_internal(last_observed: &mut usize, shared: &Shared<T>) -> Result<Option<T>, ChannelClosed> {
         if !shared.sender_alive() {
             return Err(ChannelClosed(()));
@@ -126,7 +131,7 @@ impl<T: Clone> Receiver<T> {
     }
 
     pub fn wait_for_change(&mut self) -> Result<T, ChannelClosed> {
-        if let Some(v) = self.get_changed()? {
+        if let Some(v) = Self::get_changed_internal(&mut self.last_observed, &self.shared)? {
             return Ok(v);
         }
         let lock = self.shared.wait_for_change.lock();
@@ -213,6 +218,7 @@ mod sync {
             Self(MutexInternal::new(val))
         }
 
+        #[inline(always)]
         pub fn lock(&self) -> MutexGuard<T> {
             #[cfg(not(feature = "parking_lot"))]
             return self.0.lock().unwrap_or_else(|e| e.into_inner());
@@ -229,6 +235,7 @@ mod sync {
         }
 
         #[allow(unused_mut)]
+        #[inline(always)]
         pub fn wait<'a, T>(&self, mut guard: MutexGuard<'a, T>) -> MutexGuard<'a, T> {
             #[cfg(not(feature = "parking_lot"))]
             return self.0.wait(guard).unwrap_or_else(|e| e.into_inner());
@@ -239,6 +246,7 @@ mod sync {
             }
         }
 
+        #[inline(always)]
         pub fn notify_all(&self) {
             self.0.notify_all();
         }
@@ -250,6 +258,7 @@ mod sync {
             Self(RwLockInternal::new(val))
         }
 
+        #[inline(always)]
         pub fn read(&self) -> RwLockReadGuard<T> {
             #[cfg(not(feature = "parking_lot"))]
             return self.0.read().unwrap_or_else(|e| e.into_inner());
@@ -257,6 +266,7 @@ mod sync {
             return self.0.read();
         }
 
+        #[inline(always)]
         pub fn write(&self) -> RwLockWriteGuard<T> {
             #[cfg(not(feature = "parking_lot"))]
             return self.0.write().unwrap_or_else(|e| e.into_inner());

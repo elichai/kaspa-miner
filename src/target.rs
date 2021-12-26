@@ -68,14 +68,14 @@ impl fmt::LowerHex for Uint256 {
 }
 
 impl PartialOrd for Uint256 {
-    #[inline]
+    #[inline(always)]
     fn partial_cmp(&self, other: &Uint256) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl Ord for Uint256 {
-    #[inline]
+    #[inline(always)]
     fn cmp(&self, other: &Uint256) -> Ordering {
         // We need to manually implement ordering because we use little-endian
         // and the auto derive is a lexicographic ordering(i.e. memcmp)
