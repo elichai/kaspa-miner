@@ -4,6 +4,7 @@ version = "0.2.0"
 edition = "2021"
 license = "MIT/Apache-2.0"
 authors = ["Elichai <elichai.turkel@gmail.com>"]
+repository = "https://github.com/elichai/kaspa-miner"
 readme = "README.md"
 description = "A fast CPU miner for Kaspa"
 categories = ["command-line-utilities"]
@@ -33,8 +34,8 @@ blake2b_simd = "1.0.0"
 structopt = { version = "0.3", features = ["color" ]}
 log = "0.4"
 env_logger = "0.9"
-keccak = {version = "0.1", optional = true }
-parking = {package = "parking_lot", version = "0.11", optional = true}
+keccak = { version = "0.1", optional = true }
+parking = { package = "parking_lot", version = "0.11", optional = true }
 shuttle = { version = "0.0.7", optional = true }
 
 [features]
@@ -56,4 +57,3 @@ cc = "1"
 
 [dev-dependencies]
 sha3 = { git = "https://github.com/elichai/hashes", branch = "cSHAKE" }
-shuttle = {version = "0.0.7"}
