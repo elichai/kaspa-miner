@@ -179,7 +179,7 @@ mod sync {
     compile_error!("Can't use sync primitives both from parking_lot and from shuttle");
 
     #[cfg(feature = "parking_lot")]
-    use parking_lot::{
+    use parking::{
         Condvar as CondvarInternal, Mutex as MutexInternal, MutexGuard, RwLock as RwLockInternal, RwLockReadGuard,
         RwLockWriteGuard,
     };
