@@ -12,7 +12,7 @@ A Rust binary for file encryption to multiple participants.
 With Rust's package manager cargo, you can install kaspa-miner via:
 
 ```sh
-cargo install --git https://github.com/elichai/kaspa-miner.git
+cargo install kaspa-miner
 ```
 
 ### From Binaries
@@ -25,23 +25,24 @@ There's a guide here on how to run a full node and how to generate addresses: ht
 
 Help:
 ```
-kaspa-miner 0.1.1
+kaspa-miner 0.2.0
 A Kaspa high performance CPU miner
 
 USAGE:
     kaspa-miner [FLAGS] [OPTIONS] --mining-address <mining-address>
 
 FLAGS:
-    -d, --debug      Enable debug logging level
-    -h, --help       Prints help information
-        --testnet    Use testnet instead of mainnet [default: false]
-    -V, --version    Prints version information
+    -d, --debug                   Enable debug logging level
+    -h, --help                    Prints help information
+        --mine-when-not-synced    Mine even when kaspad says it is not synced, only useful when passing `--allow-submit-
+                                  block-when-not-synced` to kaspad  [default: false]
+        --testnet                 Use testnet instead of mainnet [default: false]
+    -V, --version                 Prints version information
 
 OPTIONS:
     -s, --kaspad-address <kaspad-address>    The IP of the kaspad instance [default: 127.0.0.1]
     -a, --mining-address <mining-address>    The Kaspa address for the miner reward
     -t, --threads <num-threads>              Amount of miner threads to launch [default: number of logical cpus]
-                                             [default: 0]
     -p, --port <port>                        Kaspad port [default: Mainnet = 16111, Testnet = 16211]
 ```
 

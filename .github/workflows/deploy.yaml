@@ -9,7 +9,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-latest, windows-latest, macos-latest ]
+        os: [ ubuntu-18.04, windows-latest, macos-latest ]
     name: Building, ${{ matrix.os }}
     steps:
       - name: Fix CRLF on Windows
@@ -26,7 +26,18 @@ jobs:
           toolchain: stable
           override: true
 
-      - name: Build on Linux
+      - name: Build on Linux GNU
+        if: runner.os == 'Linux'
+        # We're using musl to make the binaries statically linked and portable
+        run: |
+          cargo build --target=x86_64-unknown-linux-gnu --release
+          asset_name="kaspa-miner-${{ github.event.release.tag_name }}-linux-amd64"
+          strip ./target/x86_64-unknown-linux-gnu/release/kaspa-miner
+          mv ./target/x86_64-unknown-linux-gnu/release/kaspa-miner ${asset_name}
+          echo "archive=${asset_name}" >> $GITHUB_ENV
+          echo "asset_name=${asset_name}" >> $GITHUB_ENV
+
+      - name: Build on Linux musl
         if: runner.os == 'Linux'
         # We're using musl to make the binaries statically linked and portable
         run: |
