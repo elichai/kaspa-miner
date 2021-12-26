@@ -8,6 +8,17 @@ readme = "README.md"
 description = "A fast CPU miner for Kaspa"
 categories = ["command-line-utilities"]
 keywords = ["blockchain", "cli"]
+include = [
+    "src/**/*.rs",
+    "src/**/*.s",
+    "proto/**",
+    "Cargo.toml",
+    "Cargo.lock",
+    "build.rs",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "README.md",
+]
 
 [dependencies]
 tonic = "0.6"
