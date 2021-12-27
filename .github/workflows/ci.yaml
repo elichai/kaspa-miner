@@ -57,7 +57,7 @@ jobs:
         if: runner.os == 'Windows'
         run: git config --global core.autocrlf false
 
-      - name: Install nightly toolchain
+      - name: Install stable toolchain
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
@@ -70,7 +70,7 @@ jobs:
         with:
           cuda: '11.2.2'
           method: 'network'
-          sub-packages: '["nvcc"]'
+          sub-packages: '["nvcc", "cudart", "Display.Driver"]'
 
       - name: Install CUDA Windows
         if: runner.os == 'Windows'
@@ -78,7 +78,7 @@ jobs:
         with:
           cuda: '11.5.1'
           method: 'network'
-          sub-packages: '["nvcc", "visual_studio_integration"]'
+          sub-packages: '["nvcc", "visual_studio_integration", "Display.Driver"]'
 
       - name: Cache
         uses: actions/cache@v2
@@ -138,6 +138,22 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
+
+      - name: Install CUDA Linux
+        if: runner.os == 'Linux'
+        uses: Jimver/cuda-toolkit@v0.2.5
+        with:
+          cuda: '11.2.2'
+          method: 'network'
+          sub-packages: '["nvcc", "cudart", "Display.Driver"]'
+
+      - name: Install CUDA Windows
+        if: runner.os == 'Windows'
+        uses: Jimver/cuda-toolkit@v0.2.5
+        with:
+          cuda: '11.5.1'
+          method: 'network'
+          sub-packages: '["nvcc", "visual_studio_integration", "Display.Driver"]'
 
       - name: Cache
         uses: actions/cache@v2
