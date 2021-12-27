@@ -1,13 +1,25 @@
 [package]
 name = "kaspa-miner"
-version = "0.1.3-GPU-0.2"
+version = "0.2.0-GPU-0.1"
 edition = "2021"
 license = "MIT/Apache-2.0"
 authors = ["Elichai <elichai.turkel@gmail.com>"]
+repository = "https://github.com/elichai/kaspa-miner"
 readme = "README.md"
 description = "A fast CPU miner for Kaspa"
 categories = ["command-line-utilities"]
 keywords = ["blockchain", "cli"]
+include = [
+    "src/**/*.rs",
+    "src/**/*.s",
+    "proto/**",
+    "Cargo.toml",
+    "Cargo.lock",
+    "build.rs",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "README.md",
+]
 
 [dependencies]
 tonic = "0.6"
@@ -15,7 +27,6 @@ tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
 prost = "0.9"
 futures-util = "0.3"
 tokio-stream = "0.1"
-sha3 = { git = "https://github.com/elichai/hashes", branch = "cSHAKE" }
 once_cell = "1"
 num_cpus = "1"
 rand = "0.8"
@@ -23,10 +34,19 @@ blake2b_simd = "1.0.0"
 structopt = { version = "0.3", features = ["color" ]}
 log = "0.4"
 env_logger = "0.9"
+keccak = { version = "0.1", optional = true }
+parking = { package = "parking_lot", version = "0.11", optional = true }
+shuttle = { version = "0.0.7", optional = true }
 cust = "0.2"
 
 [features]
+default = ["parking_lot"]
+parking_lot = ["parking", "tokio/parking_lot"]
 bench = []
+no-asm = ["keccak"]
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keccak = "0.1"
 
 [profile.release]
 lto = true
@@ -34,4 +54,7 @@ codegen-units = 1
 
 [build-dependencies]
 tonic-build = { version = "0.6", default-features = false, features = ["prost", "transport"] }
-cc = "1.0"
+cc = "1"
+
+[dev-dependencies]
+sha3 = { git = "https://github.com/elichai/hashes", branch = "cSHAKE" }

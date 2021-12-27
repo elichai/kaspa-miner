@@ -1,13 +1,17 @@
 #![cfg_attr(all(test, feature = "bench"), feature(test))]
 
+use std::error::Error as StdError;
+
+use log::warn;
+use structopt::StructOpt;
+
 use crate::cli::Opt;
 use crate::client::KaspadHandler;
+use crate::miner::MinerManager;
 use crate::proto::NotifyBlockAddedRequestMessage;
+use crate::target::Uint256;
 use cust::CudaFlags;
-use log::warn;
-use std::error::Error as StdError;
 use std::fmt;
-use structopt::StructOpt;
 
 mod cli;
 mod client;
@@ -16,6 +20,7 @@ mod kaspad_messages;
 mod miner;
 mod pow;
 mod target;
+mod watch;
 
 pub mod proto {
     tonic::include_proto!("protowire");
@@ -24,20 +29,7 @@ pub mod proto {
 
 pub type Error = Box<dyn StdError + Send + Sync + 'static>;
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub struct Hash(pub [u8; 32]);
-
-impl fmt::LowerHex for Hash {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.0.iter().try_for_each(|&c| write!(f, "{:02x}", c))
-    }
-}
-
-impl AsRef<[u8]> for Hash {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
+type Hash = Uint256;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -54,8 +46,8 @@ async fn main() -> Result<(), Error> {
                 .await?;
         client.client_send(NotifyBlockAddedRequestMessage {}).await?;
         client.client_get_block_template().await?;
-
-        client.listen(opt.num_threads.unwrap(), gpus.clone(), workload.clone(), opt.workload_absolute).await?;
+        let mut miner_manager = MinerManager::new(client.send_channel.clone(), opt.num_threads, gpus.clone(), workload.clone(), opt.workload_absolute);
+        client.listen(&mut miner_manager).await?;
         warn!("Disconnected from kaspad, retrying");
     }
 }

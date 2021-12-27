@@ -31,11 +31,11 @@ pub struct Opt {
     #[structopt(
         short = "t",
         long = "threads",
-        help = "Amount of CPU miner threads to launch. The first thread manages the GPU, if not disabled [default: number of logical cpus minus number of gpu]"
+        help = "Amount of miner threads to launch [default: number of logical cpus]"
     )]
-    pub num_threads: Option<usize>,
+    pub num_threads: Option<u16>,
     #[structopt(
-        long = "mine-when_not-synced",
+        long = "mine-when-not-synced",
         help = "Mine even when kaspad says it is not synced, only useful when passing `--allow-submit-block-when-not-synced` to kaspad  [default: false]"
     )]
     pub mine_when_not_synced: bool,
@@ -66,6 +66,7 @@ impl Opt {
             let port = self.port();
             self.kaspad_address = format!("grpc://{}:{}", self.kaspad_address, port);
         }
+        log::info!("kaspad address: {}", self.kaspad_address);
 
         let gpu_count = Device::num_devices().unwrap() as u16;
         if self.cuda_device.is_none() {

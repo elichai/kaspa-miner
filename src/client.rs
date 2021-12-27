@@ -10,7 +10,7 @@ use tonic::{transport::Channel as TonicChannel, Streaming};
 #[allow(dead_code)]
 pub struct KaspadHandler {
     client: RpcClient<TonicChannel>,
-    send_channel: Sender<KaspadMessage>,
+    pub send_channel: Sender<KaspadMessage>,
     stream: Streaming<KaspadMessage>,
     miner_address: String,
     mine_when_not_synced: bool,
@@ -38,18 +38,10 @@ impl KaspadHandler {
         self.client_send(GetBlockTemplateRequestMessage { pay_address: self.miner_address.clone() }).await
     }
 
-    pub async fn listen(
-        &mut self,
-        num_threads: usize,
-        cuda_device: Vec<u16>,
-        workload: Vec<f32>,
-        workload_absolute: bool,
-    ) -> Result<(), Error> {
-        let mut miner =
-            MinerManager::new(self.send_channel.clone(), num_threads, cuda_device, workload, workload_absolute);
+    pub async fn listen(&mut self, miner: &mut MinerManager) -> Result<(), Error> {
         while let Some(msg) = self.stream.message().await? {
             match msg.payload {
-                Some(payload) => self.handle_message(payload, &mut miner).await?,
+                Some(payload) => self.handle_message(payload, miner).await?,
                 None => warn!("kaspad message payload is empty"),
             }
         }

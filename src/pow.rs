@@ -3,10 +3,12 @@ use std::sync::Arc;
 
 use crate::gpu::GPUWork;
 pub use crate::pow::hasher::HeaderHasher;
-use crate::pow::hasher::{Hasher, PowHasher};
-use crate::pow::heavy_hash::Matrix;
-use crate::proto::{RpcBlock, RpcBlockHeader};
 use crate::{
+    pow::{
+        hasher::{Hasher, PowHasher},
+        heavy_hash::Matrix,
+    },
+    proto::{RpcBlock, RpcBlockHeader},
     target::{self, Uint256},
     Error,
 };
@@ -14,13 +16,14 @@ use cust::prelude::SliceExt;
 
 mod hasher;
 mod heavy_hash;
+mod keccak;
 mod xoshiro;
 
 #[derive(Clone)]
 pub struct State {
     pub id: usize,
     matrix: Arc<Matrix>,
-    pub target: Uint256,
+    target: Uint256,
     pub pow_hash_header: Vec<u8>,
     block: Arc<RpcBlock>,
     // PRE_POW_HASH || TIME || 32 zero byte padding; without NONCE
@@ -37,8 +40,7 @@ impl State {
         serialize_header(&mut hasher, header, true);
         let pre_pow_hash = hasher.finalize();
         // PRE_POW_HASH || TIME || 32 zero byte padding || NONCE
-        let mut hasher = PowHasher::new();
-        hasher.update(pre_pow_hash).update(header.timestamp.to_le_bytes()).update([0u8; 32]);
+        let hasher = PowHasher::new(pre_pow_hash, header.timestamp as u64);
         let matrix = Arc::new(Matrix::generate(pre_pow_hash));
 
         Ok(Self {
@@ -60,10 +62,8 @@ impl State {
     // PRE_POW_HASH || TIME || 32 zero byte padding || NONCE
     pub fn calculate_pow(&self, nonce: u64) -> Uint256 {
         // Hasher already contains PRE_POW_HASH || TIME || 32 zero byte padding; so only the NONCE is missing
-        let mut hasher = self.hasher.clone();
-        hasher.update(nonce.to_le_bytes());
-        let heavy_hash = self.matrix.heavy_hash(hasher.finalize());
-        Uint256::from_le_bytes(heavy_hash.0)
+        let hash = self.hasher.finalize_with_nonce(nonce);
+        self.matrix.heavy_hash(hash)
     }
 
     #[inline(always)]
@@ -141,6 +141,7 @@ pub fn serialize_header<H: Hasher>(hasher: &mut H, header: &RpcBlockHeader, for_
     hasher.update(hash);
 }
 
+#[allow(dead_code)] // False Positive: https://github.com/rust-lang/rust/issues/88900
 #[derive(Debug)]
 enum FromHexError {
     OddLength,
@@ -382,7 +383,7 @@ mod tests {
         serialize_header(&mut buf, &header, true);
         assert_eq!(&expected_res[..], &buf.0);
 
-        let expected_hash = Hash([
+        let expected_hash = Hash::from_le_bytes([
             85, 146, 211, 217, 138, 239, 47, 85, 152, 59, 58, 16, 4, 149, 129, 179, 172, 226, 174, 233, 160, 96, 202,
             54, 6, 225, 64, 142, 106, 0, 110, 137,
         ]);

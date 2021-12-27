@@ -31,7 +31,7 @@ cargo build --release
 
 The regular version is still available at
 ```sh
-cargo install --git https://github.com/elichai/kaspa-miner.git
+cargo install kaspa-miner
 ```
 
 ### From Binaries
@@ -44,7 +44,7 @@ There's a guide here on how to run a full node and how to generate addresses: ht
 
 Help:
 ```
-kaspa-miner 0.1.3-GPU-0.2
+kaspa-miner 0.2.0
 A Kaspa high performance CPU miner
 
 USAGE:
@@ -53,19 +53,16 @@ USAGE:
 FLAGS:
     -d, --debug                   Enable debug logging level
     -h, --help                    Prints help information
-        --mine-when_not-synced    Mine even when kaspad says it is not synced, only useful when passing `--allow-submit-
+        --mine-when-not-synced    Mine even when kaspad says it is not synced, only useful when passing `--allow-submit-
                                   block-when-not-synced` to kaspad  [default: false]
         --testnet                 Use testnet instead of mainnet [default: false]
     -V, --version                 Prints version information
 
 OPTIONS:
-        --cuda-device <cuda-device>...       Which GPUs to use [default: all]
     -s, --kaspad-address <kaspad-address>    The IP of the kaspad instance [default: 127.0.0.1]
     -a, --mining-address <mining-address>    The Kaspa address for the miner reward
-    -t, --threads <num-threads>              Amount of CPU miner threads to launch. The first thread manages the GPU, if
-                                             not disabled [default: number of logical cpus minus number of gpu]
+    -t, --threads <num-threads>              Amount of miner threads to launch [default: number of logical cpus]
     -p, --port <port>                        Kaspad port [default: Mainnet = 16111, Testnet = 16211]
-        --workload <workload>...             How many nonces to generate at once [defualt: cuda recommendations]
 ```
 
 To start mining you just need to run the following:

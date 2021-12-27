@@ -1,14 +1,13 @@
-use crate::proto::{KaspadMessage, RpcBlock};
-use crate::{pow, Error};
-use log::{error, info, warn};
-use rand::{thread_rng, RngCore};
 use std::num::Wrapping;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::thread::sleep;
 use std::time::Duration;
+
+use crate::proto::{KaspadMessage, RpcBlock};
+use crate::{pow, watch, Error};
+use log::{error, info, warn};
+use rand::{thread_rng, RngCore};
 use tokio::sync::mpsc::Sender;
-use tokio::sync::watch;
 use tokio::task::{self, JoinHandle};
 use tokio::time::MissedTickBehavior;
 
@@ -34,38 +33,30 @@ impl Drop for MinerManager {
     }
 }
 
+pub fn get_num_cpus(n_cpus: Option<u16>) -> u16 {
+    n_cpus.unwrap_or_else(|| {
+        num_cpus::get_physical().try_into().expect("Doesn't make sense to have more than 65,536 CPU cores")
+    })
+}
+
 const LOG_RATE: Duration = Duration::from_secs(10);
 
 impl MinerManager {
     pub fn new(
         send_channel: Sender<KaspadMessage>,
-        num_threads: usize,
+        n_cpus: Option<u16>,
         gpus: Vec<u16>,
         workload: Vec<f32>,
         workload_absolute: bool,
     ) -> Self {
-        info!("launching: {} miners", num_threads);
         let hashes_tried = Arc::new(AtomicU64::new(0));
         let (send, recv) = watch::channel(None);
-        let handels = (0..(num_threads + gpus.len()))
-            .map(|i| {
-                if i < gpus.len() {
-                    Self::launch_gpu_miner(
-                        send_channel.clone(),
-                        recv.clone(),
-                        Arc::clone(&hashes_tried),
-                        gpus.clone(),
-                        i,
-                        workload.clone(),
-                        workload_absolute,
-                    )
-                } else {
-                    Self::launch_miner(send_channel.clone(), recv.clone(), Arc::clone(&hashes_tried))
-                }
-            })
-            .collect();
+        let handles = [
+            Self::launch_cpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv, n_cpus).collect(),
+            Self::launch_gpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv, gpus, workload, workload_absolute).collect(),
+        ].concat();
         Self {
-            handles: handels,
+            handles,
             block_channel: send,
             send_channel,
             logger_handle: task::spawn(Self::log_hashrate(Arc::clone(&hashes_tried))),
@@ -73,6 +64,39 @@ impl MinerManager {
             hashes_tried,
             current_state_id: AtomicUsize::new(0),
         }
+    }
+
+    fn launch_cpu_threads(
+        send_channel: Sender<KaspadMessage>,
+        hashes_tried: Arc<AtomicU64>,
+        work_channel: watch::Receiver<Option<pow::State>>,
+        n_cpus: Option<u16>,
+    ) -> impl Iterator<Item = MinerHandler> {
+        let n_cpus = get_num_cpus(n_cpus);
+        info!("launching: {} cpu miners", n_cpus);
+        (0..n_cpus)
+            .map(move |_| Self::launch_cpu_miner(send_channel.clone(), work_channel.clone(), Arc::clone(&hashes_tried)))
+    }
+
+    fn launch_gpu_threads(
+        send_channel: Sender<KaspadMessage>,
+        hashes_tried: Arc<AtomicU64>,
+        work_channel: watch::Receiver<Option<pow::State>>,
+        gpus: Vec<u16>,
+        workload: Vec<f32>,
+        workload_absolute: bool,
+    ) -> impl Iterator<Item = MinerHandler>{
+        (0..gpus.len())
+            .map(move |_|
+                     Self::launch_gpu_miner(
+                         send_channel.clone(),
+                         work_channel.clone(),
+                         Arc::clone(&hashes_tried),
+                         gpus[i],
+                         workload[i],
+                         workload_absolute,
+                     )
+            )
     }
 
     pub async fn process_block(&mut self, block: Option<RpcBlock>) -> Result<(), Error> {
@@ -92,7 +116,7 @@ impl MinerManager {
             }
         };
 
-        self.block_channel.send(state.clone()).map_err(|_e| "Failed sending block to threads")?;
+        self.block_channel.send(state).map_err(|_e| "Failed sending block to threads")?;
         Ok(())
     }
 
@@ -100,16 +124,15 @@ impl MinerManager {
         send_channel: Sender<KaspadMessage>,
         mut block_channel: watch::Receiver<Option<pow::State>>,
         hashes_tried: Arc<AtomicU64>,
-        gpus: Vec<u16>,
-        thd_id: usize,
-        workload: Vec<f32>,
+        gpu: u16,
+        workload: f32,
         workload_absolute: bool,
     ) -> MinerHandler {
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
             (|| {
-                info!("Spawned Thread for GPU #{}", gpus[thd_id]);
-                let mut gpu_work = GPUWork::new(gpus[thd_id] as u32, workload[thd_id], workload_absolute)?;
+                info!("Spawned Thread for GPU #{}", gpu);
+                let mut gpu_work = GPUWork::new(gpu as u32, workload, workload_absolute)?;
                 //let mut gpu_work = gpu_ctx.get_worker(workload).unwrap();
                 let out_size: usize = gpu_work.get_output_size();
 
@@ -121,8 +144,7 @@ impl MinerManager {
                 let mut has_results = false;
                 loop {
                     if state.is_none() {
-                        rt.block_on(block_channel.changed())?;
-                        state = block_channel.borrow().clone();
+                        state = block_channel.wait_for_change()?;
                     }
                     let state_ref = match state.as_mut() {
                         Some(s) => s,
@@ -184,42 +206,39 @@ impl MinerManager {
                     gpu_work.calculate_heavy_hash();
                     has_results = true;
                     {
-                        let borrowed_state = (&block_channel).borrow();
-                        if borrowed_state.is_none() || (borrowed_state.as_ref().unwrap().id != state.as_ref().unwrap().id) {
-                            state = borrowed_state.clone();
-                            has_results = false;
+                        if let Some(new_state) = block_channel.get_changed()? {
+                            state = new_state;
                         }
                     }
                 }
                 Ok(())
             })()
             .map_err(|e: Error| {
-                error!("GPU thread of #{} crashed: {}", thd_id, e.to_string());
+                error!("GPU thread of #{} crashed: {}", gpu, e.to_string());
                 e
             })
         })
     }
 
-    fn launch_miner(
+    pub fn launch_cpu_miner(
         send_channel: Sender<KaspadMessage>,
         mut block_channel: watch::Receiver<Option<pow::State>>,
         hashes_tried: Arc<AtomicU64>,
     ) -> MinerHandler {
         let mut nonce = Wrapping(thread_rng().next_u64());
         std::thread::spawn(move || {
-            let rt = tokio::runtime::Runtime::new().unwrap();
             (|| {
                 let mut state = None;
                 loop {
                     if state.is_none() {
-                        rt.block_on(block_channel.changed())?;
-                        state = block_channel.borrow().clone();
+                        state = block_channel.wait_for_change()?;
                     }
                     let state_ref = match state.as_mut() {
                         Some(s) => s,
                         None => continue,
                     };
-                    if let Some(block) = state_ref.generate_block_if_pow(nonce.0) {
+                    state_ref.nonce = nonce.0;
+                    if let Some(block) = state_ref.generate_block_if_pow() {
                         let block_hash =
                             block.block_hash().expect("We just got it from the state, we should be able to hash it");
                         send_channel.blocking_send(KaspadMessage::submit_block(block))?;
@@ -230,18 +249,17 @@ impl MinerManager {
                     hashes_tried.fetch_add(1, Ordering::AcqRel);
 
                     if nonce.0 % 128 == 0 {
-                        let borrowed_state = (&block_channel).borrow();
-                        if borrowed_state.is_none() || (borrowed_state.as_ref().unwrap().id != state.as_ref().unwrap().id) {
-                            state = borrowed_state.clone();
+                        if let Some(new_state) = block_channel.get_changed()? {
+                            state = new_state;
                         }
                     }
                 }
                 Ok(())
             })()
-            .map_err(|e: Error| {
-                error!("CPU thread crashed: {}", e.to_string());
-                e
-            })
+                .map_err(|e: Error| {
+                    error!("CPU thread crashed: {}", e.to_string());
+                    e
+                })
         })
     }
 
@@ -252,14 +270,66 @@ impl MinerManager {
         for i in 0u64.. {
             let now = ticker.tick().await;
             let hashes = hashes_tried.swap(0, Ordering::AcqRel);
-            let kilo_hashes = (hashes as f64) / 1000.0;
-            let rate = kilo_hashes / (now - last_instant).as_secs_f64();
+            let rate = (hashes as f64) / (now - last_instant).as_secs_f64();
             if hashes == 0 && i % 2 == 0 {
                 warn!("Kaspad is still not synced")
             } else if hashes != 0 {
-                info!("Current hashrate is: {:.2} Khash/s", rate);
+                let (rate, suffix) = Self::hash_suffix(rate);
+                info!("Current hashrate is: {:.2} {}", rate, suffix);
             }
             last_instant = now;
         }
+    }
+
+    #[inline]
+    fn hash_suffix(n: f64) -> (f64, &'static str) {
+        match n {
+            n if n < 1_000.0 => (n, "hash/s"),
+            n if n < 1_000_000.0 => (n / 1_000.0, "Khash/s"),
+            n if n < 1_000_000_000.0 => (n / 1_000_000.0, "Mhash/s"),
+            n if n < 1_000_000_000_000.0 => (n / 1_000_000_000.0, "Ghash/s"),
+            n if n < 1_000_000_000_000_000.0 => (n / 1_000_000_000_000.0, "Thash/s"),
+            _ => (n, "hash/s"),
+        }
+    }
+}
+
+#[cfg(all(test, feature = "bench"))]
+mod benches {
+    extern crate test;
+
+    use self::test::{black_box, Bencher};
+    use crate::pow::State;
+    use crate::proto::{RpcBlock, RpcBlockHeader};
+    use rand::{thread_rng, RngCore};
+
+    #[bench]
+    pub fn bench_mining(bh: &mut Bencher) {
+        let mut state = State::new(RpcBlock {
+            header: Some(RpcBlockHeader {
+                version: 1,
+                parents: vec![],
+                hash_merkle_root: "23618af45051560529440541e7dc56be27676d278b1e00324b048d410a19d764".to_string(),
+                accepted_id_merkle_root: "947d1a10378d6478b6957a0ed71866812dee33684968031b1cace4908c149d94".to_string(),
+                utxo_commitment: "ec5e8fc0bc0c637004cee262cef12e7cf6d9cd7772513dbd466176a07ab7c4f4".to_string(),
+                timestamp: 654654353,
+                bits: 0x1e7fffff,
+                nonce: 0,
+                daa_score: 654456,
+                blue_work: "d8e28a03234786".to_string(),
+                pruning_point: "be4c415d378f9113fabd3c09fcc84ddb6a00f900c87cb6a1186993ddc3014e2d".to_string(),
+                blue_score: 1164419,
+            }),
+            transactions: vec![],
+            verbose_data: None,
+        })
+        .unwrap();
+        state.nonce = thread_rng().next_u64();
+        bh.iter(|| {
+            for _ in 0..100 {
+                black_box(state.check_pow());
+                state.nonce += 1;
+            }
+        });
     }
 }

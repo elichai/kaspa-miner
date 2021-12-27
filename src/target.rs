@@ -1,4 +1,5 @@
 use core::cmp::Ordering;
+use std::fmt;
 
 pub fn u256_from_compact_target(bits: u32) -> Uint256 {
     // This is a floating-point "compact" encoding originally used by
@@ -27,6 +28,10 @@ pub fn u256_from_compact_target(bits: u32) -> Uint256 {
 pub struct Uint256(pub [u64; 4]);
 
 impl Uint256 {
+    #[inline(always)]
+    pub fn new(v: [u64; 4]) -> Self {
+        Self(v)
+    }
     /// Create an object from a given unsigned 64-bit integer
     #[inline]
     pub fn from_u64(init: u64) -> Uint256 {
@@ -37,6 +42,7 @@ impl Uint256 {
 
     /// Creates big integer value from a byte slice using
     /// little-endian encoding
+    #[inline(always)]
     pub fn from_le_bytes(bytes: [u8; 32]) -> Uint256 {
         let mut out = [0u64; 4];
         // This should optimize to basically a transmute.
@@ -45,17 +51,31 @@ impl Uint256 {
             .for_each(|(word, bytes)| *word = u64::from_le_bytes(bytes.try_into().unwrap()));
         Self(out)
     }
+
+    #[inline(always)]
+    pub fn to_le_bytes(self) -> [u8; 32] {
+        let mut out = [0u8; 32];
+        // This should optimize to basically a transmute.
+        out.chunks_exact_mut(8).zip(self.0).for_each(|(bytes, word)| bytes.copy_from_slice(&word.to_le_bytes()));
+        out
+    }
+}
+
+impl fmt::LowerHex for Uint256 {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.to_le_bytes().iter().try_for_each(|&c| write!(f, "{:02x}", c))
+    }
 }
 
 impl PartialOrd for Uint256 {
-    #[inline]
+    #[inline(always)]
     fn partial_cmp(&self, other: &Uint256) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl Ord for Uint256 {
-    #[inline]
+    #[inline(always)]
     fn cmp(&self, other: &Uint256) -> Ordering {
         // We need to manually implement ordering because we use little-endian
         // and the auto derive is a lexicographic ordering(i.e. memcmp)
