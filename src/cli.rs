@@ -83,14 +83,6 @@ impl Opt {
                 iter::repeat(*self.workload.clone().unwrap().last().unwrap()).take(fill_size).collect();
             self.workload = Some([self.workload.clone().unwrap(), fill_vec.clone()].concat());
         }
-
-        if self.num_threads.is_none() {
-            self.num_threads = Some(max(
-                num_cpus::get_physical() - self.cuda_device.clone().or_else(|| Some(vec![0u16; 0])).unwrap().len(),
-                0,
-            ));
-        }
-
         Ok(())
     }
 

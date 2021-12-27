@@ -1,7 +1,9 @@
 use std::num::Wrapping;
+use std::ops::Deref;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+use cust::prelude::SliceExt;
 
 use crate::proto::{KaspadMessage, RpcBlock};
 use crate::{pow, watch, Error};
@@ -51,10 +53,8 @@ impl MinerManager {
     ) -> Self {
         let hashes_tried = Arc::new(AtomicU64::new(0));
         let (send, recv) = watch::channel(None);
-        let handles = [
-            Self::launch_cpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv, n_cpus).collect(),
-            Self::launch_gpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv, gpus, workload, workload_absolute).collect(),
-        ].concat();
+        let mut handles = Self::launch_cpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv.clone(), n_cpus).collect::<Vec<MinerHandler>>();
+        handles.append(&mut Self::launch_gpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv.clone(), gpus, workload, workload_absolute).collect::<Vec<MinerHandler>>());
         Self {
             handles,
             block_channel: send,
@@ -87,7 +87,7 @@ impl MinerManager {
         workload_absolute: bool,
     ) -> impl Iterator<Item = MinerHandler>{
         (0..gpus.len())
-            .map(move |_|
+            .map(move |i|
                      Self::launch_gpu_miner(
                          send_channel.clone(),
                          work_channel.clone(),
@@ -145,6 +145,7 @@ impl MinerManager {
                 loop {
                     if state.is_none() {
                         state = block_channel.wait_for_change()?;
+                        has_results = false;
                     }
                     let state_ref = match state.as_mut() {
                         Some(s) => s,
@@ -165,6 +166,7 @@ impl MinerManager {
                                         .expect("We just got it from the state, we should be able to hash it");
                                     send_channel.blocking_send(KaspadMessage::submit_block(block))?;
                                     info!("Found a block: {:x}", block_hash);
+                                    state = None;
                                     break;
                                 } else {
                                     warn!("Something is wrong in GPU code!")
@@ -173,10 +175,11 @@ impl MinerManager {
                         }
 
                         /*
-                        info!("Output should be: {}", state_ref.calculate_pow(nonces[0]).0[3]);
-                        info!("We got: {} (Nonces: {})", Uint256::from_le_bytes(hashes[0]).0[3], nonces[0]);
-                        assert!(state_ref.calculate_pow(nonces[0]).0[0] == Uint256::from_le_bytes(hashes[0]).0[0]);
-
+                        info!("Output should be: {:02X?}", state_ref.calculate_pow(nonces[0]).to_le_bytes());
+                        info!("We got: {:02X?} (Nonces: {:02X?})", hashes[0], nonces[0].to_le_bytes());
+                        assert!(state_ref.calculate_pow(nonces[0]).to_le_bytes() == hashes[0]);
+                        */
+                        /*
                         info!("Output should be: {}", state_ref.calculate_pow(nonces[nonces.len()-1]).0[3]);
                         info!("We got: {} (Nonces: {})", Uint256::from_le_bytes(hashes[nonces.len()-1]).0[3], nonces[nonces.len()-1]);
                         assert!(state_ref.calculate_pow(nonces[nonces.len()-1]).0[0] == Uint256::from_le_bytes(hashes[nonces.len()-1]).0[0]);
@@ -184,7 +187,8 @@ impl MinerManager {
                         /*
                         if state_ref.calculate_pow(nonces[0]).0[0] != Uint256::from_le_bytes(hashes[0]).0[0] {
                             gpu_work.sync()?;
-                            let nonce_vec = vec![nonces[0]; workload];
+                            let mut nonce_vec = vec![nonces[0]; 1];
+                            nonce_vec.append(&mut vec![0u64; gpu_work.workload-1]);
                             gpu_work.calculate_pow_hash(&state_ref.pow_hash_header, Some(&nonce_vec));
                             gpu_work.sync()?;
                             gpu_work.calculate_matrix_mul(&mut state_ref.matrix.clone().0.as_slice().as_dbuf().unwrap());
@@ -194,9 +198,9 @@ impl MinerManager {
                             let mut hashes2  = vec![[0u8; 32]; out_size];
                             let mut nonces2= vec![0u64; out_size];
                             gpu_work.copy_output_to(&mut hashes2, &mut nonces2);
-                            assert!(state_ref.calculate_pow(nonces[0]).0[0] == Uint256::from_le_bytes(hashes2[0]).0[0]);
+                            assert!(state_ref.calculate_pow(nonces[0]).to_le_bytes() == hashes2[0]);
                             assert!(nonces2[0] == nonces[0]);
-                            assert!(hashes2[0] == hashes[0]);
+                            assert!(hashes2 == hashes);
                             assert!(false);
                         }*/
 
@@ -208,6 +212,7 @@ impl MinerManager {
                     {
                         if let Some(new_state) = block_channel.get_changed()? {
                             state = new_state;
+                            has_results = false;
                         }
                     }
                 }
@@ -237,12 +242,12 @@ impl MinerManager {
                         Some(s) => s,
                         None => continue,
                     };
-                    state_ref.nonce = nonce.0;
-                    if let Some(block) = state_ref.generate_block_if_pow() {
+                    if let Some(block) = state_ref.generate_block_if_pow(nonce.0) {
                         let block_hash =
                             block.block_hash().expect("We just got it from the state, we should be able to hash it");
                         send_channel.blocking_send(KaspadMessage::submit_block(block))?;
                         info!("Found a block: {:x}", block_hash);
+                        state = None;
                     }
                     nonce += Wrapping(1);
                     // TODO: Is this really necessary? can we just use Relaxed?
@@ -324,11 +329,11 @@ mod benches {
             verbose_data: None,
         })
         .unwrap();
-        state.nonce = thread_rng().next_u64();
+        nonce = thread_rng().next_u64();
         bh.iter(|| {
             for _ in 0..100 {
-                black_box(state.check_pow());
-                state.nonce += 1;
+                black_box(state.check_pow(nonce));
+                nonce += 1;
             }
         });
     }

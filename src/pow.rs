@@ -23,7 +23,7 @@ mod xoshiro;
 pub struct State {
     pub id: usize,
     matrix: Arc<Matrix>,
-    target: Uint256,
+    pub target: Uint256,
     pub pow_hash_header: Vec<u8>,
     block: Arc<RpcBlock>,
     // PRE_POW_HASH || TIME || 32 zero byte padding; without NONCE
@@ -48,7 +48,7 @@ impl State {
             matrix,
             target,
             pow_hash_header: [
-                pre_pow_hash.0.as_slice(),
+                pre_pow_hash.to_le_bytes().as_slice(),
                 header.timestamp.to_le_bytes().as_slice(),
                 [0u8; 32].as_slice(),
             ]
