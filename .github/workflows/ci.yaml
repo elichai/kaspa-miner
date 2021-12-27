@@ -69,16 +69,14 @@ jobs:
         uses: Jimver/cuda-toolkit@v0.2.5
         with:
           cuda: '11.2.2'
-          method: 'network'
-          sub-packages: '["nvcc", "cudart", "Display.Driver"]'
+          method: 'local'
 
       - name: Install CUDA Windows
         if: runner.os == 'Windows'
         uses: Jimver/cuda-toolkit@v0.2.5
         with:
           cuda: '11.5.1'
-          method: 'network'
-          sub-packages: '["nvcc", "visual_studio_integration", "Display.Driver"]'
+          method: 'local'
 
       - name: Cache
         uses: actions/cache@v2
@@ -144,16 +142,14 @@ jobs:
         uses: Jimver/cuda-toolkit@v0.2.5
         with:
           cuda: '11.2.2'
-          method: 'network'
-          sub-packages: '["nvcc", "cudart", "Display.Driver"]'
+          method: 'local'
 
       - name: Install CUDA Windows
         if: runner.os == 'Windows'
         uses: Jimver/cuda-toolkit@v0.2.5
         with:
           cuda: '11.5.1'
-          method: 'network'
-          sub-packages: '["nvcc", "visual_studio_integration", "Display.Driver"]'
+          method: 'local'
 
       - name: Cache
         uses: actions/cache@v2
