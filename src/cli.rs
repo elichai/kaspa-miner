@@ -6,7 +6,7 @@ use structopt::StructOpt;
 
 use crate::Error;
 
-const DEFAULT_WORKLOAD_SCALE: f32 = 32.;
+const DEFAULT_WORKLOAD_SCALE: f32 = 16.;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "kaspa-miner", about = "A Kaspa high performance CPU miner")]
@@ -43,7 +43,7 @@ pub struct Opt {
     pub cuda_device: Option<Vec<u16>>,
     #[structopt(
         long = "workload",
-        help = "Ratio of nonces to GPU possible parrallel run [defualt: {DEFAULT_WORKLOAD_SCALE}]"
+        help = "Ratio of nonces to GPU possible parrallel run [defualt: 16]"
     )]
     pub workload: Option<Vec<f32>>,
     #[structopt(long = "no-gpu", help = "Disable GPU miner [default: false]")]
@@ -68,20 +68,24 @@ impl Opt {
         }
         log::info!("kaspad address: {}", self.kaspad_address);
 
-        let gpu_count = Device::num_devices().unwrap() as u16;
-        if self.cuda_device.is_none() {
-            self.cuda_device = Some((0..gpu_count).collect());
-        }
+        if self.no_gpu {
+            self.cuda_device = None
+        } else {
+            let gpu_count = Device::num_devices().unwrap() as u16;
+            if self.cuda_device.is_none() {
+                self.cuda_device = Some((0..gpu_count).collect());
+            }
 
-        if self.workload.is_none() {
-            let fill_size = self.cuda_device.clone().unwrap().len();
-            let vec: Vec<f32> = iter::repeat(DEFAULT_WORKLOAD_SCALE).take(fill_size).collect();
-            self.workload = Some(vec);
-        } else if self.workload.clone().unwrap().len() < self.cuda_device.clone().unwrap().len() {
-            let fill_size = self.cuda_device.clone().unwrap().len() - self.workload.clone().unwrap().len();
-            let fill_vec: Vec<f32> =
-                iter::repeat(*self.workload.clone().unwrap().last().unwrap()).take(fill_size).collect();
-            self.workload = Some([self.workload.clone().unwrap(), fill_vec.clone()].concat());
+            if self.workload.is_none() {
+                let fill_size = self.cuda_device.clone().unwrap().len();
+                let vec: Vec<f32> = iter::repeat(DEFAULT_WORKLOAD_SCALE).take(fill_size).collect();
+                self.workload = Some(vec);
+            } else if self.workload.clone().unwrap().len() < self.cuda_device.clone().unwrap().len() {
+                let fill_size = self.cuda_device.clone().unwrap().len() - self.workload.clone().unwrap().len();
+                let fill_vec: Vec<f32> =
+                    iter::repeat(*self.workload.clone().unwrap().last().unwrap()).take(fill_size).collect();
+                self.workload = Some([self.workload.clone().unwrap(), fill_vec.clone()].concat());
+            }
         }
         Ok(())
     }

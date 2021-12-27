@@ -47,14 +47,16 @@ impl MinerManager {
     pub fn new(
         send_channel: Sender<KaspadMessage>,
         n_cpus: Option<u16>,
-        gpus: Vec<u16>,
-        workload: Vec<f32>,
+        gpus: Option<Vec<u16>>,
+        workload: Option<Vec<f32>>,
         workload_absolute: bool,
     ) -> Self {
         let hashes_tried = Arc::new(AtomicU64::new(0));
         let (send, recv) = watch::channel(None);
         let mut handles = Self::launch_cpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv.clone(), n_cpus).collect::<Vec<MinerHandler>>();
-        handles.append(&mut Self::launch_gpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv.clone(), gpus, workload, workload_absolute).collect::<Vec<MinerHandler>>());
+        if gpus.is_some() {
+            handles.append(&mut Self::launch_gpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv.clone(), gpus.unwrap(), workload.unwrap(), workload_absolute).collect::<Vec<MinerHandler>>());
+        }
         Self {
             handles,
             block_channel: send,

@@ -10,7 +10,7 @@ jobs:
       fail-fast: false
       matrix:
         # Build gnu-linux on ubuntu-18.04 and musl on ubuntu latest
-        os: [ ubuntu-18.04, ubuntu-latest, windows-latest, macos-latest ]
+        os: [ ubuntu-18.04, windows-latest, macos-latest ]
     name: Building, ${{ matrix.os }}
     steps:
       - name: Fix CRLF on Windows
@@ -50,18 +50,6 @@ jobs:
           echo "archive=${asset_name}" >> $GITHUB_ENV
           echo "asset_name=${asset_name}" >> $GITHUB_ENV
 
-      - name: Build on Linux musl
-        if: matrix.os == 'ubuntu-latest'
-        # We're using musl to make the binaries statically linked and portable
-        run: |
-          sudo apt-get install -y musl-tools
-          rustup target add x86_64-unknown-linux-musl
-          cargo build --target=x86_64-unknown-linux-musl --release
-          asset_name="kaspa-miner-${{ github.event.release.tag_name }}-linux-musl-amd64"
-          strip ./target/x86_64-unknown-linux-musl/release/kaspa-miner
-          mv ./target/x86_64-unknown-linux-musl/release/kaspa-miner ${asset_name}
-          echo "archive=${asset_name}" >> $GITHUB_ENV
-          echo "asset_name=${asset_name}" >> $GITHUB_ENV
 
       - name: Build on Windows
         if: matrix.os == 'windows-latest'
