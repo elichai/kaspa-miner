@@ -142,7 +142,7 @@ impl MinerManager {
                         Some(s) => s,
                         None => continue,
                     };
-                    run_kenel(state_ref)?;
+                    //run_kenel(state_ref)?;
                 }
                 info!("Done loop!");
                 Ok(())
