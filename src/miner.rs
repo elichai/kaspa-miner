@@ -1,5 +1,5 @@
 use std::num::Wrapping;
-use std::ops::Deref;
+use std::ops::{Deref};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -12,8 +12,9 @@ use rand::{thread_rng, RngCore};
 use tokio::sync::mpsc::Sender;
 use tokio::task::{self, JoinHandle};
 use tokio::time::MissedTickBehavior;
+use crate::gpu::cuda::CudaGPUWork;
 
-use crate::gpu::GPUWork;
+use crate::gpu::{GPUWork, GPUWorkFactory, GPUWorkType};
 use crate::target::Uint256;
 
 type MinerHandler = std::thread::JoinHandle<Result<(), Error>>;
@@ -89,16 +90,15 @@ impl MinerManager {
         workload_absolute: bool,
     ) -> impl Iterator<Item = MinerHandler>{
         (0..gpus.len())
-            .map(move |i|
-                     Self::launch_gpu_miner(
-                         send_channel.clone(),
-                         work_channel.clone(),
-                         Arc::clone(&hashes_tried),
-                         gpus[i],
-                         workload[i],
-                         workload_absolute,
-                     )
-            )
+            .map(move |i| {
+                let mut gpu_work_factory = GPUWorkFactory::new(GPUWorkType::CUDA, gpus[i] as u32, workload[i], workload_absolute);
+                Self::launch_gpu_miner(
+                    send_channel.clone(),
+                    work_channel.clone(),
+                    Arc::clone(&hashes_tried),
+                    gpu_work_factory
+                )
+            })
     }
 
     pub async fn process_block(&mut self, block: Option<RpcBlock>) -> Result<(), Error> {
@@ -122,7 +122,7 @@ impl MinerManager {
         Ok(())
     }
 
-    fn launch_gpu_miner(
+    fn launch_opencl_miner(
         send_channel: Sender<KaspadMessage>,
         mut block_channel: watch::Receiver<Option<pow::State>>,
         hashes_tried: Arc<AtomicU64>,
@@ -131,10 +131,38 @@ impl MinerManager {
         workload_absolute: bool,
     ) -> MinerHandler {
         std::thread::spawn(move || {
-            let rt = tokio::runtime::Runtime::new().unwrap();
             (|| {
-                info!("Spawned Thread for GPU #{}", gpu);
-                let mut gpu_work = GPUWork::new(gpu as u32, workload, workload_absolute)?;
+                info!("Starting loop!");
+                loop {
+                    let mut state = None;
+                    if state.is_none() {
+                        state = block_channel.wait_for_change()?;
+                    }
+                    let state_ref = match state.as_mut() {
+                        Some(s) => s,
+                        None => continue,
+                    };
+                    run_kenel(state_ref)?;
+                }
+                info!("Done loop!");
+                Ok(())
+            })().map_err(|e: Error| {
+                    error!("GPU thread of #{} crashed: {}", gpu, e.to_string());
+                    e
+                })
+        })
+    }
+
+    fn launch_gpu_miner(
+        send_channel: Sender<KaspadMessage>,
+        mut block_channel: watch::Receiver<Option<pow::State>>,
+        hashes_tried: Arc<AtomicU64>,
+        mut factory: GPUWorkFactory,
+    ) -> MinerHandler {
+        std::thread::spawn(move || {
+            let mut gpu_work = factory.build()?;
+            (|| {
+                info!("Spawned Thread for GPU {}", gpu_work.id());
                 //let mut gpu_work = gpu_ctx.get_worker(workload).unwrap();
                 let out_size: usize = gpu_work.get_output_size();
 
@@ -164,7 +192,7 @@ impl MinerManager {
                             send_channel.blocking_send(KaspadMessage::submit_block(block))?;
                             info!("Found a block: {:x}", block_hash);
                             state = None;
-                            hashes_tried.fetch_add(gpu_work.workload.try_into().unwrap(), Ordering::AcqRel);
+                            hashes_tried.fetch_add(gpu_work.get_workload().try_into().unwrap(), Ordering::AcqRel);
                             continue;
                         } else {
                             warn!("Something is wrong in GPU code!")
@@ -201,7 +229,7 @@ impl MinerManager {
                             assert!(false);
                         }*/
 
-                    hashes_tried.fetch_add(gpu_work.workload.try_into().unwrap(), Ordering::AcqRel);
+                    hashes_tried.fetch_add(gpu_work.get_workload().try_into().unwrap(), Ordering::AcqRel);
 
                     {
                         if let Some(new_state) = block_channel.get_changed()? {
@@ -212,7 +240,7 @@ impl MinerManager {
                 Ok(())
             })()
             .map_err(|e: Error| {
-                error!("GPU thread of #{} crashed: {}", gpu, e.to_string());
+                error!("GPU thread of {} crashed: {}", gpu_work.id(), e.to_string());
                 e
             })
         })

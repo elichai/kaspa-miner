@@ -38,6 +38,7 @@ keccak = { version = "0.1", optional = true }
 parking = { package = "parking_lot", version = "0.11", optional = true }
 shuttle = { version = "0.0.7", optional = true }
 cust = "0.2"
+opencl3 = { version = "0.6", features = ["CL_VERSION_2_1", "CL_VERSION_2_2", "CL_VERSION_3_0"]}
 
 [features]
 default = ["parking_lot"]
