@@ -14,6 +14,9 @@ pub struct KaspadHandler {
     stream: Streaming<KaspadMessage>,
     miner_address: String,
     mine_when_not_synced: bool,
+    devfund_address: Option<String>,
+    devfund_percent: u16,
+    block_template_ctr: u64,
 }
 
 impl KaspadHandler {
@@ -27,15 +30,36 @@ impl KaspadHandler {
         send_channel.send(GetInfoRequestMessage {}.into()).await?;
         send_channel.send(GetBlockTemplateRequestMessage { pay_address: miner_address.clone() }.into()).await?;
         let stream = client.message_stream(ReceiverStream::new(recv)).await?.into_inner();
-        Ok(Self { client, stream, send_channel, miner_address, mine_when_not_synced })
+        Ok(Self {
+            client,
+            stream,
+            send_channel,
+            miner_address,
+            mine_when_not_synced,
+            devfund_address: None,
+            devfund_percent: 0,
+            block_template_ctr: 0,
+        })
+    }
+
+    pub fn add_devfund(&mut self, address: String, percent: u16) {
+        self.devfund_address = Some(address);
+        self.devfund_percent = percent;
     }
 
     pub async fn client_send(&self, msg: impl Into<KaspadMessage>) -> Result<(), SendError<KaspadMessage>> {
         self.send_channel.send(msg.into()).await
     }
 
-    pub async fn client_get_block_template(&self) -> Result<(), SendError<KaspadMessage>> {
-        self.client_send(GetBlockTemplateRequestMessage { pay_address: self.miner_address.clone() }).await
+    pub async fn client_get_block_template(&mut self) -> Result<(), SendError<KaspadMessage>> {
+        let pay_address = match &self.devfund_address {
+            Some(devfund_address) if (self.block_template_ctr % 10_000) as u16 <= self.devfund_percent => {
+                devfund_address.clone()
+            }
+            _ => self.miner_address.clone(),
+        };
+        self.block_template_ctr += 1;
+        self.client_send(GetBlockTemplateRequestMessage { pay_address }).await
     }
 
     pub async fn listen(&mut self, miner: &mut MinerManager) -> Result<(), Error> {
@@ -48,7 +72,7 @@ impl KaspadHandler {
         Ok(())
     }
 
-    async fn handle_message(&self, msg: Payload, miner: &mut MinerManager) -> Result<(), Error> {
+    async fn handle_message(&mut self, msg: Payload, miner: &mut MinerManager) -> Result<(), Error> {
         match msg {
             Payload::BlockAddedNotification(_) => self.client_get_block_template().await?,
             Payload::GetBlockTemplateResponse(template) => match (template.block, template.is_synced, template.error) {
