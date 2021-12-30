@@ -2,7 +2,7 @@
 
 use std::error::Error as StdError;
 
-use log::warn;
+use log::{info, warn};
 use structopt::StructOpt;
 
 use crate::cli::Opt;
@@ -40,6 +40,12 @@ async fn main() -> Result<(), Error> {
                 .await?;
         if let Some(devfund_address) = &opt.devfund_address {
             client.add_devfund(devfund_address.clone(), opt.devfund_percent);
+            info!(
+                "devfund enabled, mining {}.{}% of the time to devfund address: {} ",
+                opt.devfund_percent / 100,
+                opt.devfund_percent % 100,
+                devfund_address
+            );
         }
         client.client_send(NotifyBlockAddedRequestMessage {}).await?;
         client.client_get_block_template().await?;
