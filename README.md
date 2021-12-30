@@ -50,7 +50,7 @@ OPTIONS:
 
 To start mining you just need to run the following:
 
-`./kaspa-miner --mining-addr kaspa:XXXXX`
+`./kaspa-miner --mining-address kaspa:XXXXX`
 
 This will run the miner on all the available CPU cores.
 
