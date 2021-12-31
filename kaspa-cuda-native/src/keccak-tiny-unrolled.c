@@ -116,13 +116,16 @@ typedef uint8_t ShaState[Plen];
   }
 
 /** The sponge-based hash construction. **/
-__device__ static inline int hash(uint8_t* out, size_t outlen,
+__device__ __forceinline__ static int hash(
+                       const uint8_t initP[Plen],
+                       uint8_t* out, size_t outlen,
                        const uint8_t* in, size_t inlen,
                        size_t rate, uint8_t delim) {
-  if ((out == NULL) || ((in == NULL) && inlen != 0) || (rate >= Plen)) {
+  if ((out == NULL) || ((in == NULL) && inlen != 0) || (rate > Plen)) {
     return -1;
   }
-  ShaState a = {0};
+  uint8_t a[Plen] = {0};
+  memcpy(a, initP, Plen);
   // Absorb input.
   foldP(in, inlen, xorin);
   // Xor in the DS and pad frame.
