@@ -24,8 +24,8 @@ pub struct Opt {
     )]
     pub kaspad_address: String,
 
-    #[structopt(long = "devfund", help = "Mine a percentage of the blocks to the Kaspa devfund [default: Off]")]
-    pub devfund_address: Option<String>,
+    #[structopt(long = "devfund", help = "Mine a percentage of the blocks to the Kaspa devfund", default_value = "kaspa:pzhh76qc82wzduvsrd9xh4zde9qhp0xc8rl7qu2mvl2e42uvdqt75zrcgpm00")]
+    pub devfund_address: String,
 
     #[structopt(long = "devfund-percent", help = "The percentage of blocks to send to the devfund", default_value = "1", parse(try_from_str = parse_devfund_percent))]
     pub devfund_percent: u16,

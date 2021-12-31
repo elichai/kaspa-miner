@@ -44,7 +44,7 @@ There's a guide here on how to run a full node and how to generate addresses: ht
 
 Help:
 ```
-kaspa-miner 0.2.1
+kaspa-miner 0.2.1-GPU-0.1
 A Kaspa high performance CPU miner
 
 USAGE:
@@ -55,16 +55,24 @@ FLAGS:
     -h, --help                    Prints help information
         --mine-when-not-synced    Mine even when kaspad says it is not synced, only useful when passing `--allow-submit-
                                   block-when-not-synced` to kaspad  [default: false]
+        --no-gpu                  Disable GPU miner [default: false]
         --testnet                 Use testnet instead of mainnet [default: false]
     -V, --version                 Prints version information
+        --workload-absolute       The values given by workload are not ratio, but absolute number of nonces [default:
+                                  false]
 
 OPTIONS:
-        --devfund <devfund-address>            Mine a percentage of the blocks to the Kaspa devfund [default: Off]
+        --cuda-device <cuda-device>...         Which CUDA GPUs to use [default: all]
+        --devfund <devfund-address>            Mine a percentage of the blocks to the Kaspa devfund [default:
+                                               kaspa:pzhh76qc82wzduvsrd9xh4zde9qhp0xc8rl7qu2mvl2e42uvdqt75zrcgpm00]
         --devfund-percent <devfund-percent>    The percentage of blocks to send to the devfund [default: 1]
     -s, --kaspad-address <kaspad-address>      The IP of the kaspad instance [default: 127.0.0.1]
     -a, --mining-address <mining-address>      The Kaspa address for the miner reward
     -t, --threads <num-threads>                Amount of miner threads to launch [default: number of logical cpus]
+        --opencl-device <opencl-device>...     Which OpenCL GPUs to use (only GPUs currently. experimental) [default:
+                                               none]
     -p, --port <port>                          Kaspad port [default: Mainnet = 16111, Testnet = 16211]
+        --workload <workload>...               Ratio of nonces to GPU possible parrallel run [defualt: 16]
 ```
 
 To start mining you just need to run the following:
@@ -74,7 +82,7 @@ To start mining you just need to run the following:
 This will run the miner on all the available CPU cores.
 
 # Devfund
-**NOTE: This feature is off by default** <br>
+
 The devfund is a fund managed by the Kaspa community in order to fund Kaspa development <br>
 A miner that wants to mine a percentage into the dev-fund can pass the following flags: <br>
 `kaspa-miner --mining-address= XXX --devfund=kaspa:precqv0krj3r6uyyfa36ga7s0u9jct0v4wg8ctsfde2gkrsgwgw8jgxfzfc98` <br>

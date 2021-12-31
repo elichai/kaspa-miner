@@ -58,6 +58,7 @@ impl<'kernel> Kernel<'kernel> {
 }
 
 pub struct CudaGPUWork<'gpu> {
+    device_id: u32,
     _context: Context,
     _module: Arc<Module>,
 
@@ -78,10 +79,7 @@ pub struct CudaGPUWork<'gpu> {
 impl<'gpu> GPUWork for CudaGPUWork<'gpu> {
     fn id(&self) -> String {
         let device = CurrentContext::get_device().unwrap();
-        format!("#{} ({})",
-            device.get_attribute(DeviceAttribute::PciDeviceId).unwrap(),
-            device.name().unwrap()
-        )
+        format!("#{} ({})", self.device_id, device.name().unwrap())
 
     }
 
@@ -257,6 +255,7 @@ impl<'gpu> CudaGPUWork<'gpu> {
         })?;
         info!("GPU #{} initialized", device_id);
         Ok(Self {
+            device_id,
             _context,
             _module: Arc::clone(&_module),
             workload: chosen_workload,

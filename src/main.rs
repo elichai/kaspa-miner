@@ -42,13 +42,13 @@ async fn main() -> Result<(), Error> {
         let mut client =
             KaspadHandler::connect(opt.kaspad_address.clone(), opt.mining_address.clone(), opt.mine_when_not_synced)
                 .await?;
-        if let Some(devfund_address) = &opt.devfund_address {
-            client.add_devfund(devfund_address.clone(), opt.devfund_percent);
+        if opt.devfund_percent > 0 {
+            client.add_devfund( opt.devfund_address.clone(), opt.devfund_percent);
             info!(
                 "devfund enabled, mining {}.{}% of the time to devfund address: {} ",
                 opt.devfund_percent / 100,
                 opt.devfund_percent % 100,
-                devfund_address
+                opt.devfund_address
             );
         }
         client.client_send(NotifyBlockAddedRequestMessage {}).await?;
