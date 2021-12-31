@@ -107,6 +107,16 @@ impl Opt {
         }
         log::info!("kaspad address: {}", self.kaspad_address);
 
+        let miner_network = self.mining_address.split(":").next();
+        let devfund_network = self.devfund_address.split(":").next();
+        if  miner_network.is_some() && devfund_network.is_some() && miner_network != devfund_network {
+            self.devfund_percent = 0;
+            log::info!(
+                "Mining address ({}) and devfund ({}) are not from the same network. Disabling devfund.",
+                miner_network.unwrap(), devfund_network.unwrap()
+            )
+        }
+
         if self.no_gpu {
             self.cuda_device = None;
             self.opencl_device = None;

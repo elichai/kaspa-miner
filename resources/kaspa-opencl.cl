@@ -224,22 +224,22 @@ kernel void heavy_hash(
     uchar16 hash_part[4];
     for (int i=0; i<4; i++) {
          hash_part[i] = (uchar16)(
-            (hash_[2*i] & 0xF0) >> 4,
-            (hash_[2*i] & 0x0F),
-            (hash_[2*i+1] & 0xF0) >> 4,
-            (hash_[2*i+1] & 0x0F),
-            (hash_[2*i+2] & 0xF0) >> 4,
-            (hash_[2*i+2] & 0x0F),
-            (hash_[2*i+3] & 0xF0) >> 4,
-            (hash_[2*i+3] & 0x0F),
-            (hash_[2*i+4] & 0xF0) >> 4,
-            (hash_[2*i+4] & 0x0F),
-            (hash_[2*i+5] & 0xF0) >> 4,
-            (hash_[2*i+5] & 0x0F),
-            (hash_[2*i+6] & 0xF0) >> 4,
-            (hash_[2*i+6] & 0x0F),
-            (hash_[2*i+7] & 0xF0) >> 4,
-            (hash_[2*i+7] & 0x0F)
+            (hash_[8*i] & 0xF0) >> 4,
+            (hash_[8*i] & 0x0F),
+            (hash_[8*i+1] & 0xF0) >> 4,
+            (hash_[8*i+1] & 0x0F),
+            (hash_[8*i+2] & 0xF0) >> 4,
+            (hash_[8*i+2] & 0x0F),
+            (hash_[8*i+3] & 0xF0) >> 4,
+            (hash_[8*i+3] & 0x0F),
+            (hash_[8*i+4] & 0xF0) >> 4,
+            (hash_[8*i+4] & 0x0F),
+            (hash_[8*i+5] & 0xF0) >> 4,
+            (hash_[8*i+5] & 0x0F),
+            (hash_[8*i+6] & 0xF0) >> 4,
+            (hash_[8*i+6] & 0x0F),
+            (hash_[8*i+7] & 0xF0) >> 4,
+            (hash_[8*i+7] & 0x0F)
         );
     }
 
