@@ -2,7 +2,7 @@
 
 use std::error::Error as StdError;
 
-use log::warn;
+use log::{info, warn};
 use structopt::StructOpt;
 
 use crate::cli::Opt;
@@ -42,6 +42,15 @@ async fn main() -> Result<(), Error> {
         let mut client =
             KaspadHandler::connect(opt.kaspad_address.clone(), opt.mining_address.clone(), opt.mine_when_not_synced)
                 .await?;
+        if let Some(devfund_address) = &opt.devfund_address {
+            client.add_devfund(devfund_address.clone(), opt.devfund_percent);
+            info!(
+                "devfund enabled, mining {}.{}% of the time to devfund address: {} ",
+                opt.devfund_percent / 100,
+                opt.devfund_percent % 100,
+                devfund_address
+            );
+        }
         client.client_send(NotifyBlockAddedRequestMessage {}).await?;
         client.client_get_block_template().await?;
         let mut miner_manager = MinerManager::new(client.send_channel.clone(), opt.num_threads, opt.cuda_device.clone(), opt.workload.clone(), opt.workload_absolute);

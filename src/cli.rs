@@ -23,6 +23,12 @@ pub struct Opt {
     )]
     pub kaspad_address: String,
 
+    #[structopt(long = "devfund", help = "Mine a percentage of the blocks to the Kaspa devfund [default: Off]")]
+    pub devfund_address: Option<String>,
+
+    #[structopt(long = "devfund-percent", help = "The percentage of blocks to send to the devfund", default_value = "1", parse(try_from_str = parse_devfund_percent))]
+    pub devfund_percent: u16,
+
     #[structopt(short, long, help = "Kaspad port [default: Mainnet = 16111, Testnet = 16211]")]
     port: Option<u16>,
 
@@ -53,6 +59,29 @@ pub struct Opt {
         help = "The values given by workload are not ratio, but absolute number of nonces [default: false]"
     )]
     pub workload_absolute: bool,
+}
+
+fn parse_devfund_percent(s: &str) -> Result<u16, &'static str> {
+    let err = "devfund-percent should be --devfund-percent=XX.YY up to 2 numbers after the dot";
+    let mut splited = s.split('.');
+    let prefix = splited.next().ok_or(err)?;
+    // if there's no postfix then it's 0.
+    let postfix = splited.next().ok_or(err).unwrap_or("0");
+    // error if there's more than a single dot
+    if splited.next().is_some() {
+        return Err(err);
+    };
+    // error if there are more than 2 numbers before or after the dot
+    if prefix.len() > 2 || postfix.len() > 2 {
+        return Err(err);
+    }
+    let postfix: u16 = postfix.parse().map_err(|_| err)?;
+    let prefix: u16 = prefix.parse().map_err(|_| err)?;
+    // can't be more than 99.99%,
+    if prefix >= 100 || postfix >= 100 {
+        return Err(err);
+    }
+    Ok(prefix * 100 + postfix)
 }
 
 impl Opt {
