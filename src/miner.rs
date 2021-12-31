@@ -48,6 +48,7 @@ impl MinerManager {
     pub fn new(
         send_channel: Sender<KaspadMessage>,
         n_cpus: Option<u16>,
+        platform: GPUWorkType,
         gpus: Option<Vec<u16>>,
         workload: Option<Vec<f32>>,
         workload_absolute: bool,
@@ -56,7 +57,7 @@ impl MinerManager {
         let (send, recv) = watch::channel(None);
         let mut handles = Self::launch_cpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv.clone(), n_cpus).collect::<Vec<MinerHandler>>();
         if gpus.is_some() {
-            handles.append(&mut Self::launch_gpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv.clone(), gpus.unwrap(), workload.unwrap(), workload_absolute).collect::<Vec<MinerHandler>>());
+            handles.append(&mut Self::launch_gpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv.clone(), platform, gpus.unwrap(), workload.unwrap(), workload_absolute).collect::<Vec<MinerHandler>>());
         }
         Self {
             handles,
@@ -85,13 +86,14 @@ impl MinerManager {
         send_channel: Sender<KaspadMessage>,
         hashes_tried: Arc<AtomicU64>,
         work_channel: watch::Receiver<Option<pow::State>>,
+        platform: GPUWorkType,
         gpus: Vec<u16>,
         workload: Vec<f32>,
         workload_absolute: bool,
     ) -> impl Iterator<Item = MinerHandler>{
         (0..gpus.len())
             .map(move |i| {
-                let mut gpu_work_factory = GPUWorkFactory::new(GPUWorkType::CUDA, gpus[i] as u32, workload[i], workload_absolute);
+                let mut gpu_work_factory = GPUWorkFactory::new(platform, gpus[i] as u32, workload[i], workload_absolute);
                 Self::launch_gpu_miner(
                     send_channel.clone(),
                     work_channel.clone(),
@@ -122,50 +124,18 @@ impl MinerManager {
         Ok(())
     }
 
-    fn launch_opencl_miner(
-        send_channel: Sender<KaspadMessage>,
-        mut block_channel: watch::Receiver<Option<pow::State>>,
-        hashes_tried: Arc<AtomicU64>,
-        gpu: u16,
-        workload: f32,
-        workload_absolute: bool,
-    ) -> MinerHandler {
-        std::thread::spawn(move || {
-            (|| {
-                info!("Starting loop!");
-                loop {
-                    let mut state = None;
-                    if state.is_none() {
-                        state = block_channel.wait_for_change()?;
-                    }
-                    let state_ref = match state.as_mut() {
-                        Some(s) => s,
-                        None => continue,
-                    };
-                    //run_kenel(state_ref)?;
-                }
-                info!("Done loop!");
-                Ok(())
-            })().map_err(|e: Error| {
-                    error!("GPU thread of #{} crashed: {}", gpu, e.to_string());
-                    e
-                })
-        })
-    }
-
     fn launch_gpu_miner(
         send_channel: Sender<KaspadMessage>,
         mut block_channel: watch::Receiver<Option<pow::State>>,
         hashes_tried: Arc<AtomicU64>,
-        mut factory: GPUWorkFactory,
+        factory: GPUWorkFactory,
     ) -> MinerHandler {
         std::thread::spawn(move || {
-            let mut gpu_work = factory.build()?;
+            let mut box_ = factory.build()?;
+            let gpu_work = box_.as_mut();
             (|| {
                 info!("Spawned Thread for GPU {}", gpu_work.id());
                 //let mut gpu_work = gpu_ctx.get_worker(workload).unwrap();
-                let out_size: usize = gpu_work.get_output_size();
-
                 let mut nonces = vec![0u64; 1];
 
                 let mut state = None;
@@ -175,12 +145,14 @@ impl MinerManager {
                     if state.is_none() {
                         state = block_channel.wait_for_change()?;
                     }
-                    let state_ref = match state.as_mut() {
-                        Some(s) => s,
+                    let state_ref = match &state {
+                        Some(s) => {
+                            s.load_to_gpu(gpu_work);
+                            s
+                        },
                         None => continue,
                     };
-
-                    state_ref.pow_gpu(&mut gpu_work);
+                    state_ref.pow_gpu(gpu_work);
                     gpu_work.sync().unwrap();
 
                     gpu_work.copy_output_to(&mut nonces)?;
@@ -192,10 +164,13 @@ impl MinerManager {
                             send_channel.blocking_send(KaspadMessage::submit_block(block))?;
                             info!("Found a block: {:x}", block_hash);
                             state = None;
+                            nonces[0] = 0;
                             hashes_tried.fetch_add(gpu_work.get_workload().try_into().unwrap(), Ordering::AcqRel);
                             continue;
                         } else {
-                            warn!("Something is wrong in GPU code!")
+                            let hash = state_ref.calculate_pow(nonces[0]);
+                            warn!("Something is wrong in GPU code! Got nonce {}, with hash real {}  (target: {})", nonces[0], hash.0[3], state_ref.target.0[3]);
+                            break;
                         }
                     }
 

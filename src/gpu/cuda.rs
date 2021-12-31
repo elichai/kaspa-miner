@@ -91,17 +91,17 @@ impl<'gpu> GPUWork for CudaGPUWork<'gpu> {
 
     fn load_block_constants(&mut self, hash_header: &[u8; 72], matrix: &[[u8; 64]; 64], target: &[u64; 4]) {
         let mut hash_header_gpu = self._module.get_global::<[u8; 72]>(&CString::new("hash_header").unwrap()).unwrap();
-        hash_header_gpu.copy_from(hash_header);
+        hash_header_gpu.copy_from(hash_header).map_err(|e| e.to_string()).unwrap();
 
         let mut matrix_gpu = self._module.get_global::<[[u8; 64]; 64]>(&CString::new("matrix").unwrap()).unwrap();
-        matrix_gpu.copy_from(matrix);
+        matrix_gpu.copy_from(matrix).map_err(|e| e.to_string()).unwrap();
 
         let mut target_gpu = self._module.get_global::<[u64; 4]>(&CString::new("target").unwrap()).unwrap();
-        target_gpu.copy_from(&target);
+        target_gpu.copy_from(&target).map_err(|e| e.to_string()).unwrap();
     }
 
     #[inline(always)]
-    fn calculate_pow_hash(&mut self, nonces: Option<&Vec<u64>>) {
+    fn calculate_hash(&mut self, nonces: Option<&Vec<u64>>) {
         let func = &self.pow_hash_kernel.func;
         let stream = &self.stream;
         let mut generate = true;
@@ -124,10 +124,7 @@ impl<'gpu> GPUWork for CudaGPUWork<'gpu> {
             )
                 .unwrap(); // We see errors in sync
         }
-    }
 
-    #[inline(always)]
-    fn calculate_matrix_mul(&mut self) {
         let func = &self.matrix_mul_kernel.func;
         let stream = &self.stream;
         unsafe {
@@ -145,14 +142,11 @@ impl<'gpu> GPUWork for CudaGPUWork<'gpu> {
                 .unwrap(); // We see errors in sync
         }
         // TODO: synchronize?
-    }
 
-    #[inline(always)]
-    fn calculate_heavy_hash(&mut self) {
         let func = &self.heavy_hash_kernel.func;
         let stream = &self.stream;
 
-        self.final_nonce_buff.copy_from(&[0u64; 1]);
+        self.final_nonce_buff.copy_from(&[0u64; 1]).map_err(|e| e.to_string()).unwrap();
         unsafe {
             launch!(
                 func<<<
@@ -177,12 +171,7 @@ impl<'gpu> GPUWork for CudaGPUWork<'gpu> {
     }
 
     #[inline(always)]
-    fn get_output_size(&self) -> usize {
-        self.heavy_hash_kernel.grid_size as usize
-    }
-
-    #[inline(always)]
-    fn copy_output_to(&self, nonces: &mut Vec<u64>) -> Result<(), Error> {
+    fn copy_output_to(&mut self, nonces: &mut Vec<u64>) -> Result<(), Error> {
         self.final_nonce_buff.copy_to(nonces)?;
         Ok(())
     }
@@ -190,6 +179,7 @@ impl<'gpu> GPUWork for CudaGPUWork<'gpu> {
 
 impl<'gpu> CudaGPUWork<'gpu> {
     pub fn new(device_id: u32, workload: f32, is_absolute: bool) -> Result<Self, Error> {
+        info!("Using CUDA");
         let device = Device::get_device(device_id).unwrap();
         let _context = Context::create_and_push(ContextFlags::MAP_HOST | ContextFlags::SCHED_AUTO, device)?;
 

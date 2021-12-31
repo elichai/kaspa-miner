@@ -13,6 +13,7 @@ use crate::{
     Error,
 };
 use cust::prelude::SliceExt;
+use log::info;
 use opencl3::types::cl_uchar;
 
 mod hasher;
@@ -91,12 +92,13 @@ impl State {
         })
     }
 
-    #[inline(always)]
-    pub fn pow_gpu(&self, gpu_work: &mut impl GPUWork) {
+    pub fn load_to_gpu(&self, gpu_work: &mut dyn GPUWork){
         gpu_work.load_block_constants(&self.pow_hash_header, &self.u8matrix, &self.target.0);
-        gpu_work.calculate_pow_hash( None);
-        gpu_work.calculate_matrix_mul();
-        gpu_work.calculate_heavy_hash();
+    }
+
+    #[inline(always)]
+    pub fn pow_gpu(&self, gpu_work: &mut dyn GPUWork) {
+        gpu_work.calculate_hash( None);
     }
 }
 

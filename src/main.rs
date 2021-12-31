@@ -53,7 +53,7 @@ async fn main() -> Result<(), Error> {
         }
         client.client_send(NotifyBlockAddedRequestMessage {}).await?;
         client.client_get_block_template().await?;
-        let mut miner_manager = MinerManager::new(client.send_channel.clone(), opt.num_threads, opt.cuda_device.clone(), opt.workload.clone(), opt.workload_absolute);
+        let mut miner_manager = MinerManager::new(client.send_channel.clone(), opt.num_threads, opt.platform, opt.gpus.clone(), opt.workload.clone(), opt.workload_absolute);
         client.listen(&mut miner_manager).await?;
         warn!("Disconnected from kaspad, retrying");
     }

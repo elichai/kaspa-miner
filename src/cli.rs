@@ -5,6 +5,7 @@ use std::{iter, net::IpAddr, str::FromStr};
 use structopt::StructOpt;
 
 use crate::Error;
+use crate::gpu::GPUWorkType;
 
 const DEFAULT_WORKLOAD_SCALE: f32 = 16.;
 
@@ -45,8 +46,10 @@ pub struct Opt {
         help = "Mine even when kaspad says it is not synced, only useful when passing `--allow-submit-block-when-not-synced` to kaspad  [default: false]"
     )]
     pub mine_when_not_synced: bool,
-    #[structopt(long = "cuda-device", help = "Which GPUs to use [default: all]")]
+    #[structopt(long = "cuda-device", help = "Which CUDA GPUs to use [default: all]")]
     pub cuda_device: Option<Vec<u16>>,
+    #[structopt(long = "opencl-device", help = "Which OpenCL GPUs to use (only GPUs currently. experimental) [default: none]")]
+    pub opencl_device: Option<Vec<u16>>,
     #[structopt(
         long = "workload",
         help = "Ratio of nonces to GPU possible parrallel run [defualt: 16]"
@@ -59,6 +62,12 @@ pub struct Opt {
         help = "The values given by workload are not ratio, but absolute number of nonces [default: false]"
     )]
     pub workload_absolute: bool,
+
+    // Temporary, until better cli is made
+    #[structopt(long, hidden = true, required=false)]
+    pub gpus: Option<Vec<u16>>,
+    #[structopt(long, hidden = true, required=false, default_value = "CUDA")]
+    pub platform: GPUWorkType
 }
 
 fn parse_devfund_percent(s: &str) -> Result<u16, &'static str> {
@@ -86,6 +95,7 @@ fn parse_devfund_percent(s: &str) -> Result<u16, &'static str> {
 
 impl Opt {
     pub fn process(&mut self) -> Result<(), Error> {
+        self.gpus = None;
         if self.kaspad_address.is_empty() {
             self.kaspad_address = "127.0.0.1".to_string();
         }
@@ -98,19 +108,30 @@ impl Opt {
         log::info!("kaspad address: {}", self.kaspad_address);
 
         if self.no_gpu {
-            self.cuda_device = None
+            self.cuda_device = None;
+            self.opencl_device = None;
         } else {
             let gpu_count = Device::num_devices().unwrap() as u16;
-            if self.cuda_device.is_none() {
+            if self.cuda_device.is_none() && self.opencl_device.is_none() {
                 self.cuda_device = Some((0..gpu_count).collect());
+            } else if self.cuda_device.is_some() && self.opencl_device.is_some() {
+                log::warn!("Having CUDA and OPENCL is not yet supported. Using only CUDA");
             }
+            self.gpus = match &self.cuda_device{
+                Some(_) => self.cuda_device.clone(),
+                None => self.opencl_device.clone()
+            };
+            self.platform = match &self.cuda_device{
+                Some(devices) => GPUWorkType::CUDA,
+                None => GPUWorkType::OPENCL
+            };
 
             if self.workload.is_none() {
-                let fill_size = self.cuda_device.clone().unwrap().len();
+                let fill_size = self.gpus.clone().unwrap().len();
                 let vec: Vec<f32> = iter::repeat(DEFAULT_WORKLOAD_SCALE).take(fill_size).collect();
                 self.workload = Some(vec);
-            } else if self.workload.clone().unwrap().len() < self.cuda_device.clone().unwrap().len() {
-                let fill_size = self.cuda_device.clone().unwrap().len() - self.workload.clone().unwrap().len();
+            } else if self.workload.clone().unwrap().len() < self.gpus.clone().unwrap().len() {
+                let fill_size = self.gpus.clone().unwrap().len() - self.workload.clone().unwrap().len();
                 let fill_vec: Vec<f32> =
                     iter::repeat(*self.workload.clone().unwrap().last().unwrap()).take(fill_size).collect();
                 self.workload = Some([self.workload.clone().unwrap(), fill_vec.clone()].concat());

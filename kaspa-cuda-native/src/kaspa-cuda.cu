@@ -67,10 +67,10 @@ extern "C" {
             #pragma unroll
             for (int i=0; i<QUARTER_MATRIX_SIZE; i++) {
                 packed_hash[i] = make_uchar4(
-                    (uint16_t)((hashes[hashId][2*i] & 0xF0) >> 4 ),
-                    (uint16_t)((hashes[hashId][2*i] & 0x0F)),
-                    (uint16_t)((hashes[hashId][2*i+1] & 0xF0) >> 4 ),
-                    (uint16_t)((hashes[hashId][2*i+1] & 0x0F))
+                    (hashes[hashId][2*i] & 0xF0) >> 4 ,
+                    (hashes[hashId][2*i] & 0x0F),
+                    (hashes[hashId][2*i+1] & 0xF0) >> 4,
+                    (hashes[hashId][2*i+1] & 0x0F)
                 );
             }
             uint32_t product1 = amul4bit((uint32_t *)(matrix[(2*rowId)]), (uint32_t *)(packed_hash)) >> 10;
