@@ -148,7 +148,7 @@ inline static int hash(uint8_t* out, size_t outlen,
 /* RANDOM NUMBER GENERATOR BASED ON MWC64X                          */
 /* http://cas.ee.ic.ac.uk/people/dt10/research/rngs-gpu-mwc64x.html */
 
-inline static ulong MWC128X(ulong2 *state)
+inline static ulong MWC128X(global ulong2 *state)
 {
     enum { A=18446744073709550874UL };
     ulong x=(*state).x, c=(*state).y;  // Unpack the state
