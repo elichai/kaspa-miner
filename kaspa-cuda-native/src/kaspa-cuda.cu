@@ -1,6 +1,7 @@
 #include<stdint.h>
 #include <assert.h>
 #include "keccak-tiny.c"
+#include "xoshiro256starstar.c"
 
 #include <curand.h>
 #include <curand_kernel.h>
@@ -49,14 +50,6 @@ __device__ __inline__ uint32_t amul4bit(uint32_t packed_vec1[32], uint32_t packe
 
 
 extern "C" {
-    //curandDirectionVectors64_t is uint64_t[64]
-    __global__ void init(curandDirectionVectors64_t *seeds,  curandStateSobol64_t* states, const uint64_t state_count) {
-        uint64_t workerId = threadIdx.x + blockIdx.x*blockDim.x;
-        if (workerId < state_count) {
-            curand_init(seeds[workerId], 0, states + workerId);
-            curand(states + workerId);
-        }
-    }
 
     __global__ void matrix_mul(const Hash *hashes, const uint64_t hashes_len, Hash *outs)
     {
@@ -83,11 +76,11 @@ extern "C" {
             }
     }
 
-    __global__ void pow_cshake(uint64_t *nonces, const uint64_t nonces_len, Hash *hashes, const bool generate, curandStateSobol64_t* states) {
+    __global__ void pow_cshake(uint64_t *nonces, const uint64_t nonces_len, Hash *hashes, const bool generate, ulonglong4* states) {
         // assuming header_len is 72
         int nonceId = threadIdx.x + blockIdx.x*blockDim.x;
         if (nonceId < nonces_len) {
-            if (generate) nonces[nonceId] = curand(states + nonceId);
+            if (generate) nonces[nonceId] = xoshiro256_next(states + nonceId);
             // header
             uint8_t input[80];
             memcpy(input, hash_header, HASH_HEADER_SIZE);

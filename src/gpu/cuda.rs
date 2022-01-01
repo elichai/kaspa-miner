@@ -9,20 +9,12 @@ use rand::Fill;
 use std::rc::Rc;
 use std::sync::{Arc, Weak};
 use crate::gpu::GPUWork;
+use crate::gpu::xoshiro256starstar::Xoshiro256StarStar;
 
 static PTX_61: &str = include_str!("../../resources/kaspa-cuda-sm61.ptx");
 static PTX_30: &str = include_str!("../../resources/kaspa-cuda-sm30.ptx");
 static PTX_20: &str = include_str!("../../resources/kaspa-cuda-sm20.ptx");
 
-// Get this from the device!
-
-type CurandDirectionVectors64 = [u64; 64];
-
-pub struct CurandStateSobol64 {
-    i: CurandDirectionVectors64, // u64, but in c, sturcts are aligned by the longest field
-    x: CurandDirectionVectors64, // u64, see above
-    direction_vectors: CurandDirectionVectors64,
-}
 
 pub struct Kernel<'kernel> {
     func: Arc<Function<'kernel>>,
@@ -64,7 +56,7 @@ pub struct CudaGPUWork<'gpu> {
 
     pub workload: usize,
     stream: Stream,
-    rand_state: DeviceBuffer<CurandStateSobol64>,
+    rand_state: DeviceBuffer<[u64;4]>,
 
     nonces_buff: DeviceBuffer<u64>,
     pow_hashes_buff: DeviceBuffer<[u8; 32]>,
@@ -206,7 +198,6 @@ impl<'gpu> CudaGPUWork<'gpu> {
 
         let stream = Stream::new(StreamFlags::NON_BLOCKING, None)?;
 
-        let mut rand_init = Kernel::new(Arc::downgrade(&_module), "init")?;
         let mut pow_hash_kernel = Kernel::new(Arc::downgrade(&_module), "pow_cshake")?;
         let mut matrix_mul_kernel = Kernel::new(Arc::downgrade(&_module), "matrix_mul")?;
         let mut heavy_hash_kernel = Kernel::new(Arc::downgrade(&_module), "heavy_hash_cshake")?;
@@ -224,11 +215,11 @@ impl<'gpu> CudaGPUWork<'gpu> {
         }
         chosen_workload = (chosen_workload as f32 * workload) as usize;
         info!("GPU #{} Chosen workload: {}", device_id, chosen_workload);
-        for ker in [&mut rand_init, &mut pow_hash_kernel, &mut matrix_mul_kernel, &mut heavy_hash_kernel] {
+        for ker in [&mut pow_hash_kernel, &mut matrix_mul_kernel, &mut heavy_hash_kernel] {
             ker.set_workload(chosen_workload as u32);
         }
 
-        let mut rand_state = unsafe { DeviceBuffer::<CurandStateSobol64>::zeroed(chosen_workload).unwrap() };
+        let mut rand_state = unsafe { DeviceBuffer::<[u64;4]>::zeroed(chosen_workload).unwrap() };
 
         let nonces_buff = vec![0u64; chosen_workload].as_slice().as_dbuf()?;
         let pow_hashes_buff = vec![[0u8; 32]; chosen_workload].as_slice().as_dbuf()?;
@@ -237,22 +228,9 @@ impl<'gpu> CudaGPUWork<'gpu> {
         let final_nonce_buff = vec![0u64; 1].as_slice().as_dbuf()?;
 
         info!("GPU #{} is generating initial seed. This may take some time.", device_id);
-        let func = rand_init.func;
-        let mut seeds = vec![1u64; 64 * chosen_workload];
-        seeds.try_fill(&mut rand::thread_rng())?;
-        unsafe {
-            launch!(
-                func<<<rand_init.grid_size, rand_init.block_size, 0, stream>>>(
-                    seeds.as_slice().as_dbuf()?.as_device_ptr(),
-                    rand_state.as_device_ptr(),
-                    chosen_workload,
-                )
-            )?;
-        }
-        stream.synchronize().or_else(|e| {
-            error!("GPU #{} init failed: {}", device_id, rand_state.len());
-            Err(e)
-        })?;
+        let mut seed = [1u64; 4];
+        seed.try_fill(&mut rand::thread_rng())?;
+        rand_state.copy_from(Xoshiro256StarStar::new(&seed).iter_jump_state().take(chosen_workload).collect::<Vec<[u64;4]>>().as_slice())?;
         info!("GPU #{} initialized", device_id);
         Ok(Self {
             device_id,

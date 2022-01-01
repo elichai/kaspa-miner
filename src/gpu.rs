@@ -7,6 +7,7 @@ use crate::gpu::opencl::OpenCLGPUWork;
 
 pub mod cuda;
 pub mod opencl;
+mod xoshiro256starstar;
 
 #[derive(Copy, Clone, Debug)]
 pub enum GPUWorkType{
