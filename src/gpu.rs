@@ -1,5 +1,5 @@
 use std::str::FromStr;
-use opencl3::device::CL_DEVICE_TYPE_GPU;
+use opencl3::device::{CL_DEVICE_TYPE_ALL, CL_DEVICE_TYPE_GPU};
 use opencl3::platform::get_platforms;
 use crate::Error;
 use crate::gpu::cuda::CudaGPUWork;
@@ -44,7 +44,7 @@ impl GPUWorkFactory {
             GPUWorkType::OPENCL => {
                 let platforms = get_platforms().unwrap();
                 let platform = &platforms[0];
-                let device_ids = platform.get_devices(CL_DEVICE_TYPE_GPU).unwrap();
+                let device_ids = platform.get_devices(CL_DEVICE_TYPE_ALL).unwrap();
                 Ok(Box::new(OpenCLGPUWork::new(device_ids[self.device_id as usize], self.workload, self.is_absolute)?))
             } // TODO: return error
         }
