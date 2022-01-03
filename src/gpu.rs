@@ -44,7 +44,7 @@ impl GPUWorkFactory {
             GPUWorkType::CUDA  => Ok(Box::new(CudaGPUWork::new(self.device_id, self.workload, self.is_absolute)?)),
             GPUWorkType::OPENCL => {
                 let platforms = get_platforms().unwrap();
-                let platform = &platforms[self.opencl_platform];
+                let platform = &platforms[self.opencl_platform as usize];
                 let device_ids = platform.get_devices(CL_DEVICE_TYPE_ALL).unwrap();
                 Ok(Box::new(OpenCLGPUWork::new(device_ids[self.device_id as usize], self.workload, self.is_absolute)?))
             } // TODO: return error

@@ -58,7 +58,7 @@ impl MinerManager {
         let (send, recv) = watch::channel(None);
         let mut handles = Self::launch_cpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv.clone(), n_cpus).collect::<Vec<MinerHandler>>();
         if gpus.is_some() {
-            handles.append(&mut Self::launch_gpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv.clone(), platform, opencl_platform,gpus.unwrap(), workload.unwrap(), workload_absolute).collect::<Vec<MinerHandler>>());
+            handles.append(&mut Self::launch_gpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv.clone(), platform, gpus.unwrap(), opencl_platform, workload.unwrap(), workload_absolute).collect::<Vec<MinerHandler>>());
         }
         Self {
             handles,
