@@ -49,6 +49,7 @@ impl MinerManager {
         send_channel: Sender<KaspadMessage>,
         n_cpus: Option<u16>,
         platform: GPUWorkType,
+        opencl_platform: u16,
         gpus: Option<Vec<u16>>,
         workload: Option<Vec<f32>>,
         workload_absolute: bool,
@@ -57,7 +58,7 @@ impl MinerManager {
         let (send, recv) = watch::channel(None);
         let mut handles = Self::launch_cpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv.clone(), n_cpus).collect::<Vec<MinerHandler>>();
         if gpus.is_some() {
-            handles.append(&mut Self::launch_gpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv.clone(), platform, gpus.unwrap(), workload.unwrap(), workload_absolute).collect::<Vec<MinerHandler>>());
+            handles.append(&mut Self::launch_gpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv.clone(), platform, opencl_platform,gpus.unwrap(), workload.unwrap(), workload_absolute).collect::<Vec<MinerHandler>>());
         }
         Self {
             handles,
@@ -88,12 +89,13 @@ impl MinerManager {
         work_channel: watch::Receiver<Option<pow::State>>,
         platform: GPUWorkType,
         gpus: Vec<u16>,
+        opencl_platform: u16,
         workload: Vec<f32>,
         workload_absolute: bool,
     ) -> impl Iterator<Item = MinerHandler>{
         (0..gpus.len())
             .map(move |i| {
-                let mut gpu_work_factory = GPUWorkFactory::new(platform, gpus[i] as u32, workload[i], workload_absolute);
+                let mut gpu_work_factory = GPUWorkFactory::new(platform, opencl_platform, gpus[i] as u32, workload[i], workload_absolute);
                 Self::launch_gpu_miner(
                     send_channel.clone(),
                     work_channel.clone(),

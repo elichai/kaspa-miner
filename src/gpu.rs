@@ -29,21 +29,22 @@ impl FromStr for GPUWorkType {
 
 pub struct GPUWorkFactory {
     type_: GPUWorkType,
+    opencl_platform: u16,
     device_id: u32,
     workload: f32,
     is_absolute: bool
 }
 
 impl GPUWorkFactory {
-    pub fn new(type_: GPUWorkType, device_id: u32, workload: f32, is_absolute: bool) -> Self {
-        Self{ type_, device_id, workload, is_absolute  }
+    pub fn new(type_: GPUWorkType, opencl_platform: u16, device_id: u32, workload: f32, is_absolute: bool) -> Self {
+        Self{ type_, opencl_platform, device_id, workload, is_absolute  }
     }
     pub fn build(&self) -> Result<Box<dyn GPUWork + 'static>, Error> {
         match self.type_ {
             GPUWorkType::CUDA  => Ok(Box::new(CudaGPUWork::new(self.device_id, self.workload, self.is_absolute)?)),
             GPUWorkType::OPENCL => {
                 let platforms = get_platforms().unwrap();
-                let platform = &platforms[0];
+                let platform = &platforms[self.opencl_platform];
                 let device_ids = platform.get_devices(CL_DEVICE_TYPE_ALL).unwrap();
                 Ok(Box::new(OpenCLGPUWork::new(device_ids[self.device_id as usize], self.workload, self.is_absolute)?))
             } // TODO: return error

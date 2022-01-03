@@ -2,6 +2,7 @@ use cust::device::Device;
 use log::LevelFilter;
 use std::cmp::max;
 use std::{iter, net::IpAddr, str::FromStr};
+use cust::CudaFlags;
 use structopt::StructOpt;
 
 use crate::Error;
@@ -46,9 +47,11 @@ pub struct Opt {
         help = "Mine even when kaspad says it is not synced, only useful when passing `--allow-submit-block-when-not-synced` to kaspad  [default: false]"
     )]
     pub mine_when_not_synced: bool,
-    #[structopt(long = "cuda-device", help = "Which CUDA GPUs to use [default: all]")]
+    #[structopt(long = "cuda-device", use_delimiter = true, help = "Which CUDA GPUs to use [default: all]")]
     pub cuda_device: Option<Vec<u16>>,
-    #[structopt(long = "opencl-device", help = "Which OpenCL GPUs to use (only GPUs currently. experimental) [default: none]")]
+    #[structopt(long = "opencl-platform", default_value = "0", help = "Which OpenCL GPUs to use (only GPUs currently. experimental) [default: none]")]
+    pub opencl_platform: u16,
+    #[structopt(long = "opencl-device", use_delimiter = true, help = "Which OpenCL GPUs to use (only GPUs currently. experimental) [default: none]")]
     pub opencl_device: Option<Vec<u16>>,
     #[structopt(
         long = "workload",
@@ -121,8 +124,8 @@ impl Opt {
             self.cuda_device = None;
             self.opencl_device = None;
         } else {
-            let gpu_count = Device::num_devices().unwrap() as u16;
             if self.cuda_device.is_none() && self.opencl_device.is_none() {
+                let gpu_count = Device::num_devices().unwrap() as u16;
                 self.cuda_device = Some((0..gpu_count).collect());
             } else if self.cuda_device.is_some() && self.opencl_device.is_some() {
                 log::warn!("Having CUDA and OPENCL is not yet supported. Using only CUDA");
@@ -132,7 +135,10 @@ impl Opt {
                 None => self.opencl_device.clone()
             };
             self.platform = match &self.cuda_device{
-                Some(devices) => GPUWorkType::CUDA,
+                Some(devices) => {
+                    cust::init(CudaFlags::empty())?;
+                    GPUWorkType::CUDA
+                },
                 None => GPUWorkType::OPENCL
             };
 

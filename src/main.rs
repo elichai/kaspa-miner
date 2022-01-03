@@ -10,7 +10,6 @@ use crate::client::KaspadHandler;
 use crate::miner::MinerManager;
 use crate::proto::NotifyBlockAddedRequestMessage;
 use crate::target::Uint256;
-use cust::CudaFlags;
 use std::fmt;
 
 mod cli;
@@ -33,7 +32,6 @@ type Hash = Uint256;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    cust::init(CudaFlags::empty())?;
     let mut opt: Opt = Opt::from_args();
     opt.process()?;
     env_logger::builder().filter_level(opt.log_level()).parse_default_env().init();
@@ -53,7 +51,7 @@ async fn main() -> Result<(), Error> {
         }
         client.client_send(NotifyBlockAddedRequestMessage {}).await?;
         client.client_get_block_template().await?;
-        let mut miner_manager = MinerManager::new(client.send_channel.clone(), opt.num_threads, opt.platform, opt.gpus.clone(), opt.workload.clone(), opt.workload_absolute);
+        let mut miner_manager = MinerManager::new(client.send_channel.clone(), opt.num_threads, opt.platform, opt.opencl_platform, opt.gpus.clone(), opt.workload.clone(), opt.workload_absolute);
         client.listen(&mut miner_manager).await?;
         warn!("Disconnected from kaspad, retrying");
     }
