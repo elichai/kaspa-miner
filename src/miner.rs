@@ -171,7 +171,8 @@ impl MinerManager {
                             continue;
                         } else {
                             let hash = state_ref.calculate_pow(nonces[0]);
-                            warn!("Something is wrong in GPU code! Got nonce {}, with hash real {}  (target: {})", nonces[0], hash.0[3], state_ref.target.0[3]);
+                            warn!("Something is wrong in GPU results! Got nonce {}, with hash real {:?}  (target: {}*2^196)", nonces[0], hash.0, state_ref.target.0[3]);
+                            break;
                         }
                     }
 
