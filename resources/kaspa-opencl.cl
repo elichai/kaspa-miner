@@ -228,7 +228,7 @@ kernel void heavy_hash(
     }
 
     hash(heavyP, hash_, 32, hash_, 32, 136, 0x04);
-    /*if (LT_U256(((uint64_t *)hash_), target)){
+    if (LT_U256(((uint64_t *)hash_), target)){
         //printf("%lu: %lu < %lu: %d %d\n", nonce, ((uint64_t *)hash_)[3], target[3], ((uint64_t *)hash_)[3] < target[3], LT_U256((uint64_t *)hash_, target));
         #ifdef cl_khr_int64_base_atomics
         atomic_cmpxchg(final_nonce, 0, nonce);
@@ -238,7 +238,7 @@ kernel void heavy_hash(
             //for(int i=0;i<4;i++) final_hash[i] = ((uint64_t volatile *)hash_)[i];
         }
         #endif
-    }*/
+    }
     /*if (nonceId==1) {
         //printf("%lu: %lu < %lu: %d %d\n", nonce, ((uint64_t *)hash2_)[3], target[3], ((uint64_t *)hash_)[3] < target[3]);
         *final_nonce = nonce;
