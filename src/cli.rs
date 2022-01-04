@@ -125,6 +125,7 @@ impl Opt {
             self.opencl_device = None;
         } else {
             if self.cuda_device.is_none() && self.opencl_device.is_none() {
+                cust::init(CudaFlags::empty())?;
                 let gpu_count = Device::num_devices().unwrap() as u16;
                 self.cuda_device = Some((0..gpu_count).collect());
             } else if self.cuda_device.is_some() && self.opencl_device.is_some() {
@@ -136,7 +137,6 @@ impl Opt {
             };
             self.platform = match &self.cuda_device{
                 Some(devices) => {
-                    cust::init(CudaFlags::empty())?;
                     GPUWorkType::CUDA
                 },
                 None => GPUWorkType::OPENCL
