@@ -59,7 +59,7 @@ constant STATIC const uint64_t RC[24] = \
   REPEAT5(e; v += s;)
 
 /*** Keccak-f[1600] ***/
-STATIC inline void keccakf(void* state) {
+STATIC inline void keccakf(volatile void* state) {
   uint64_t* a = (uint64_t*)state;
   uint64_t b[5] = {0};
   uint64_t t = 0;
@@ -102,7 +102,7 @@ STATIC inline void keccakf(void* state) {
 #define FOR(i, ST, L, S) \
   _(for (size_t i = 0; i < L; i += ST) { S; })
 #define mkapply_ds(NAME, S)                                          \
-  STATIC inline void NAME(uint8_t* dst,                              \
+  STATIC inline void NAME(volatile uint8_t* dst,                              \
                           const uint8_t* src,                        \
                           size_t len) {                              \
     FOR(i, 1, len, S);                                               \

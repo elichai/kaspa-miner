@@ -3,18 +3,17 @@
 use std::error::Error as StdError;
 
 use log::{info, warn};
-use structopt::StructOpt;
+use clap::{App,IntoApp,Parser,Args};
+use work_manager::GPUWorkFactory;
 
 use crate::cli::Opt;
 use crate::client::KaspadHandler;
 use crate::miner::MinerManager;
 use crate::proto::NotifyBlockAddedRequestMessage;
 use crate::target::Uint256;
-use std::fmt;
 
 mod cli;
 mod client;
-mod gpu;
 mod kaspad_messages;
 mod miner;
 mod pow;
@@ -32,7 +31,11 @@ type Hash = Uint256;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let mut opt: Opt = Opt::from_args();
+    //let app: App = work_manager::Opt2::augment_args_for_update(Opt::into_app()); //.subcommands(work_manager::plugin_subcommands());
+    let (app, factory): (App, GPUWorkFactory) = work_manager::load_plugins(Opt::into_app(), &["plugins/cuda/target/debug/libkaspacuda.so"])?;
+
+    let matches = app.get_matches();
+    let mut opt: Opt = Opt::from_clap(&matches);
     opt.process()?;
     env_logger::builder().filter_level(opt.log_level()).parse_default_env().init();
 
@@ -51,7 +54,7 @@ async fn main() -> Result<(), Error> {
         }
         client.client_send(NotifyBlockAddedRequestMessage {}).await?;
         client.client_get_block_template().await?;
-        let mut miner_manager = MinerManager::new(client.send_channel.clone(), opt.num_threads, opt.platform, opt.opencl_platform, opt.gpus.clone(), opt.workload.clone(), opt.workload_absolute);
+        let mut miner_manager = MinerManager::new(client.send_channel.clone(), opt.num_threads, &factory);
         client.listen(&mut miner_manager).await?;
         warn!("Disconnected from kaspad, retrying");
     }

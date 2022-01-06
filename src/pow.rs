@@ -1,7 +1,6 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use crate::gpu::GPUWork;
+use work_manager::Worker;
 pub use crate::pow::hasher::HeaderHasher;
 use crate::{
     pow::{
@@ -12,9 +11,6 @@ use crate::{
     target::{self, Uint256},
     Error,
 };
-use cust::prelude::SliceExt;
-use log::info;
-use opencl3::types::cl_uchar;
 
 mod hasher;
 mod heavy_hash;
@@ -25,8 +21,6 @@ mod xoshiro;
 pub struct State {
     pub id: usize,
     matrix: Arc<Matrix>,
-    u8matrix: Arc<[[u8;64];64]>,
-    pub cl_uchar_matrix: Arc<[[cl_uchar; 64];64]>,
     pub target: Uint256,
     pub pow_hash_header: [u8; 72],
     block: Arc<RpcBlock>,
@@ -46,8 +40,6 @@ impl State {
         // PRE_POW_HASH || TIME || 32 zero byte padding || NONCE
         let hasher = PowHasher::new(pre_pow_hash, header.timestamp as u64);
         let matrix = Arc::new(Matrix::generate(pre_pow_hash));
-        let u8matrix: Arc<[[u8;64];64]> = Arc::new(matrix.0.map(|row| row.map(|v| v as u8)));
-        let cl_uchar_matrix: Arc<[[u8;64];64]> = Arc::new(matrix.0.map(|row| row.map(|v| v as cl_uchar)));
         let mut pow_hash_header = [0u8; 72];
 
         pow_hash_header.copy_from_slice([
@@ -58,8 +50,6 @@ impl State {
         Ok(Self {
             id,
             matrix,
-            u8matrix,
-            cl_uchar_matrix,
             target,
             pow_hash_header,
             block: Arc::new(block),
@@ -92,12 +82,12 @@ impl State {
         })
     }
 
-    pub fn load_to_gpu(&self, gpu_work: &mut dyn GPUWork){
-        gpu_work.load_block_constants(&self.pow_hash_header, &self.u8matrix, &self.target.0);
+    pub fn load_to_gpu(&self, gpu_work: &mut dyn Worker){
+        gpu_work.load_block_constants(&self.pow_hash_header, &self.matrix.0, &self.target.0);
     }
 
     #[inline(always)]
-    pub fn pow_gpu(&self, gpu_work: &mut dyn GPUWork) {
+    pub fn pow_gpu(&self, gpu_work: &mut dyn Worker) {
         gpu_work.calculate_hash( None);
     }
 }

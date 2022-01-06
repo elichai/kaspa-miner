@@ -31,14 +31,13 @@ once_cell = "1"
 num_cpus = "1"
 rand = "0.8"
 blake2b_simd = "1.0.0"
-structopt = { version = "0.3", features = ["color" ]}
+clap = { version = "3.0", features = ["color", "derive"]}
 log = "0.4"
 env_logger = "0.9"
 keccak = { version = "0.1", optional = true }
 parking = { package = "parking_lot", version = "0.11", optional = true }
 shuttle = { version = "0.0.7", optional = true }
-cust = "0.2"
-opencl3 = { version = "0.6", features = ["CL_VERSION_2_1", "CL_VERSION_2_2", "CL_VERSION_3_0"]}
+work_manager = {path="plugins/work_manager"}
 
 [features]
 default = ["parking_lot"]

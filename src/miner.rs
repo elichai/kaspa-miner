@@ -1,9 +1,7 @@
 use std::num::Wrapping;
-use std::ops::{Deref};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use cust::prelude::SliceExt;
 
 use crate::proto::{KaspadMessage, RpcBlock};
 use crate::{pow, watch, Error};
@@ -12,10 +10,8 @@ use rand::{thread_rng, RngCore};
 use tokio::sync::mpsc::Sender;
 use tokio::task::{self, JoinHandle};
 use tokio::time::MissedTickBehavior;
-use crate::gpu::cuda::CudaGPUWork;
 
-use crate::gpu::{GPUWork, GPUWorkFactory, GPUWorkType};
-use crate::target::Uint256;
+use work_manager::{GPUWorkFactory, Plugin, WorkerSpec};
 
 type MinerHandler = std::thread::JoinHandle<Result<(), Error>>;
 
@@ -48,17 +44,13 @@ impl MinerManager {
     pub fn new(
         send_channel: Sender<KaspadMessage>,
         n_cpus: Option<u16>,
-        platform: GPUWorkType,
-        opencl_platform: u16,
-        gpus: Option<Vec<u16>>,
-        workload: Option<Vec<f32>>,
-        workload_absolute: bool,
+        manager: &work_manager::GPUWorkFactory
     ) -> Self {
         let hashes_tried = Arc::new(AtomicU64::new(0));
         let (send, recv) = watch::channel(None);
         let mut handles = Self::launch_cpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv.clone(), n_cpus).collect::<Vec<MinerHandler>>();
-        if gpus.is_some() {
-            handles.append(&mut Self::launch_gpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv.clone(), platform, gpus.unwrap(), opencl_platform, workload.unwrap(), workload_absolute).collect::<Vec<MinerHandler>>());
+        if true {
+            handles.append(&mut Self::launch_gpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv.clone(), manager));
         }
         Self {
             handles,
@@ -87,22 +79,19 @@ impl MinerManager {
         send_channel: Sender<KaspadMessage>,
         hashes_tried: Arc<AtomicU64>,
         work_channel: watch::Receiver<Option<pow::State>>,
-        platform: GPUWorkType,
-        gpus: Vec<u16>,
-        opencl_platform: u16,
-        workload: Vec<f32>,
-        workload_absolute: bool,
-    ) -> impl Iterator<Item = MinerHandler>{
-        (0..gpus.len())
-            .map(move |i| {
-                let mut gpu_work_factory = GPUWorkFactory::new(platform, opencl_platform, gpus[i] as u32, workload[i], workload_absolute);
-                Self::launch_gpu_miner(
-                    send_channel.clone(),
-                    work_channel.clone(),
-                    Arc::clone(&hashes_tried),
-                    gpu_work_factory
-                )
-            })
+        manager: &work_manager::GPUWorkFactory
+    ) -> Vec<MinerHandler>{
+        let mut vec = Vec::<MinerHandler>::new();
+        for i in 0..1 {
+            let spec = manager.build().unwrap();
+            vec.push(Self::launch_gpu_miner(
+                send_channel.clone(),
+                work_channel.clone(),
+                Arc::clone(&hashes_tried),
+                spec
+            ));
+        }
+        vec
     }
 
     pub async fn process_block(&mut self, block: Option<RpcBlock>) -> Result<(), Error> {
@@ -130,11 +119,12 @@ impl MinerManager {
         send_channel: Sender<KaspadMessage>,
         mut block_channel: watch::Receiver<Option<pow::State>>,
         hashes_tried: Arc<AtomicU64>,
-        factory: GPUWorkFactory,
+        spec: Box<dyn WorkerSpec>
     ) -> MinerHandler {
+        //let spec = factory.plugins.last().unwrap().get_worker_spec();
         std::thread::spawn(move || {
-            let mut box_ = factory.build()?;
-            let gpu_work = box_.as_mut();
+            let mut box_ = spec.build();
+            let gpu_work =box_.as_mut();
             (|| {
                 info!("Spawned Thread for GPU {}", gpu_work.id());
                 //let mut gpu_work = gpu_ctx.get_worker(workload).unwrap();

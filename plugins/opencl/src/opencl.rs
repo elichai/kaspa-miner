@@ -6,7 +6,7 @@ use std::sync::Arc;
 use log::info;
 use opencl3::command_queue::{CL_QUEUE_PROFILING_ENABLE, CommandQueue};
 use opencl3::context::Context;
-use opencl3::device::{CL_DEVICE_MAX_WORK_ITEM_SIZES, CL_DEVICE_TYPE_GPU, Device};
+use opencl3::device::{CL_DEVICE_MAX_WORK_ITEM_SIZES, CL_DEVICE_TYPE_GPU, Device, get_device_info, CL_DEVICE_VERSION};
 use opencl3::event::{Event, release_event, retain_event, wait_for_events};
 use opencl3::kernel::{ExecuteKernel, Kernel};
 use opencl3::memory::{CL_MAP_READ, CL_MAP_WRITE, CL_MEM_READ_WRITE, Buffer, CL_MEM_WRITE_ONLY, ClMem};
@@ -21,6 +21,7 @@ use crate::pow::State;
 use std::ptr::null;
 
 static PROGRAM_SOURCE: &str = include_str!("../../resources/kaspa-opencl.cl");
+//let cl_uchar_matrix: Arc<[[u8;64];64]> = Arc::new(matrix.0.map(|row| row.map(|v| v as cl_uchar)));
 
 pub struct OpenCLGPUWork {
     context: Arc<Context>,
@@ -108,6 +109,8 @@ impl OpenCLGPUWork {
     pub fn new(device_id: cl_device_id, workload: f32, is_absolute: bool) -> Result<Self,Error> {
         info!("Using OpenCL");
         let device =  Device::new(device_id);
+        let version = device.version().expect("Device::could not query device version");
+        info!("Found device that supports {} with extensions: {}", version, device.extensions().expect("Device::failed extension query"));
         let chosen_workload:usize;
         if is_absolute {
             chosen_workload = workload as usize
@@ -120,7 +123,16 @@ impl OpenCLGPUWork {
         let context = Arc::new(Context::from_device(&device).expect("Context::from_device failed"));
         let context_ref = unsafe{Arc::as_ptr(&context).as_ref().unwrap()};
 
-        let program = Program::create_and_build_from_source(&context, PROGRAM_SOURCE, "")
+        let v = version.split(" ").nth(1).unwrap();
+        let mut compile_options = "".to_string();
+        compile_options += CL_MAD_ENABLE + CL_FINITE_MATH_ONLY;
+        if v == "2.0" || v == "2.1" || v=="3.0" {
+            info!("Compiling with OpenCl 2");
+            compile_options += CL_STD_2_0;
+        }
+        //let source = fs::read_to_string("kaspa-opencl.cl")?;
+        //let PROGRAM_SOURCE1 = source.as_str();
+        let program = Program::create_and_build_from_source(&context, PROGRAM_SOURCE, compile_options.as_str())
             .expect("Program::create_and_build_from_source failed");
 
         let heavy_hash = Kernel::create(&program, "heavy_hash").expect("Kernel::create failed");

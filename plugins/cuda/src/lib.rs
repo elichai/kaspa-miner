@@ -1,19 +1,29 @@
+#[macro_use]
+extern crate work_manager;
+
+use std::error::Error as StdError;
 use std::ffi::CString;
-use crate::Error;
 use cust::context::CurrentContext;
 use cust::device::DeviceAttribute;
 use cust::function::Function;
 use cust::prelude::*;
-use log::{error, info};
+use log::{error, info, LevelFilter};
 use rand::Fill;
 use std::rc::Rc;
 use std::sync::{Arc, Weak};
-use crate::gpu::GPUWork;
-use crate::gpu::xoshiro256starstar::Xoshiro256StarStar;
+use work_manager::{Worker, Plugin, WorkerSpec};
+use work_manager::xoshiro256starstar::Xoshiro256StarStar;
+use crate::cli::CudaOpt;
 
-static PTX_61: &str = include_str!("../../resources/kaspa-cuda-sm61.ptx");
-static PTX_30: &str = include_str!("../../resources/kaspa-cuda-sm30.ptx");
-static PTX_20: &str = include_str!("../../resources/kaspa-cuda-sm20.ptx");
+
+pub type Error = Box<dyn StdError + Send + Sync + 'static>;
+
+pub mod cli;
+//let u8matrix: Arc<[[u8;64];64]> = Arc::new(matrix.0.map(|row| row.map(|v| v as u8)));
+
+static PTX_61: &str = include_str!("../resources/kaspa-cuda-sm61.ptx");
+static PTX_30: &str = include_str!("../resources/kaspa-cuda-sm30.ptx");
+static PTX_20: &str = include_str!("../resources/kaspa-cuda-sm20.ptx");
 
 
 pub struct Kernel<'kernel> {
@@ -49,7 +59,7 @@ impl<'kernel> Kernel<'kernel> {
     }
 }
 
-pub struct CudaGPUWork<'gpu> {
+pub struct CudaGPUWorker<'gpu> {
     device_id: u32,
     _context: Context,
     _module: Arc<Module>,
@@ -68,7 +78,7 @@ pub struct CudaGPUWork<'gpu> {
     heavy_hash_kernel: Kernel<'gpu>,
 }
 
-impl<'gpu> GPUWork for CudaGPUWork<'gpu> {
+impl<'gpu> Worker for CudaGPUWorker<'gpu> {
     fn id(&self) -> String {
         let device = CurrentContext::get_device().unwrap();
         format!("#{} ({})", self.device_id, device.name().unwrap())
@@ -79,12 +89,13 @@ impl<'gpu> GPUWork for CudaGPUWork<'gpu> {
         self.workload
     }
 
-    fn load_block_constants(&mut self, hash_header: &[u8; 72], matrix: &[[u8; 64]; 64], target: &[u64; 4]) {
+    fn load_block_constants(&mut self, hash_header: &[u8; 72], matrix: &[[u16; 64]; 64], target: &[u64; 4]) {
+        let u8matrix: Arc<[[u8;64];64]> = Arc::new(matrix.map(|row| row.map(|v| v as u8)));
         let mut hash_header_gpu = self._module.get_global::<[u8; 72]>(&CString::new("hash_header").unwrap()).unwrap();
         hash_header_gpu.copy_from(hash_header).map_err(|e| e.to_string()).unwrap();
 
         let mut matrix_gpu = self._module.get_global::<[[u8; 64]; 64]>(&CString::new("matrix").unwrap()).unwrap();
-        matrix_gpu.copy_from(matrix).map_err(|e| e.to_string()).unwrap();
+        matrix_gpu.copy_from(&u8matrix).map_err(|e| e.to_string()).unwrap();
 
         let mut target_gpu = self._module.get_global::<[u64; 4]>(&CString::new("target").unwrap()).unwrap();
         target_gpu.copy_from(&target).map_err(|e| e.to_string()).unwrap();
@@ -167,8 +178,9 @@ impl<'gpu> GPUWork for CudaGPUWork<'gpu> {
     }
 }
 
-impl<'gpu> CudaGPUWork<'gpu> {
+impl<'gpu> CudaGPUWorker<'gpu> {
     pub fn new(device_id: u32, workload: f32, is_absolute: bool) -> Result<Self, Error> {
+        env_logger::builder().filter_level(LevelFilter::Info).parse_default_env().init();
         info!("Using CUDA");
         let device = Device::get_device(device_id).unwrap();
         let _context = Context::create_and_push(ContextFlags::MAP_HOST | ContextFlags::SCHED_AUTO, device)?;
@@ -229,7 +241,9 @@ impl<'gpu> CudaGPUWork<'gpu> {
 
         info!("GPU #{} is generating initial seed. This may take some time.", device_id);
         let mut seed = [1u64; 4];
+        info!("Hi!");
         seed.try_fill(&mut rand::thread_rng())?;
+        info!("Seed: {:?}", seed);
         rand_state.copy_from(Xoshiro256StarStar::new(&seed).iter_jump_state().take(chosen_workload).collect::<Vec<[u64;4]>>().as_slice())?;
         info!("GPU #{} initialized", device_id);
         Ok(Self {
@@ -265,3 +279,32 @@ impl<'gpu> CudaGPUWork<'gpu> {
         self.nonces_buff.copy_from(nonces);
     }*/
 }
+
+pub struct CudaPlugin {
+
+}
+
+impl CudaPlugin {
+    fn init() -> Self {
+        cust::init(CudaFlags::empty()).unwrap();
+        Self{}
+    }
+}
+
+struct CudaWorkerSpec {
+
+}
+
+impl WorkerSpec for CudaWorkerSpec {
+    fn build(&self) -> Box<dyn Worker> {
+        Box::new(CudaGPUWorker::new(0, 16., false).unwrap())
+    }
+}
+
+impl Plugin for CudaPlugin {
+    fn get_worker_spec(&self) -> Box<dyn WorkerSpec> {
+        Box::new(CudaWorkerSpec{})
+    }
+}
+
+declare_plugin!(CudaPlugin, CudaPlugin::init, CudaOpt);

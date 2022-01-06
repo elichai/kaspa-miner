@@ -21,7 +21,7 @@ impl Xoshiro256StarStar {
     }
 
     pub fn next(&mut self) -> u64 {
-        let result = rotl(self.state[1] * 5, 7) * 9;
+        let result = u64::wrapping_mul(rotl(u64::wrapping_mul(self.state[1] , 5), 7) , 9);
         let t = self.state[1] << 17;
 
         self.state[2] ^= self.state[0];

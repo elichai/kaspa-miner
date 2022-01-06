@@ -1,76 +1,72 @@
-use cust::device::Device;
 use log::LevelFilter;
-use std::cmp::max;
-use std::{iter, net::IpAddr, str::FromStr};
-use cust::CudaFlags;
-use structopt::StructOpt;
+use std::{net::IpAddr, str::FromStr};
+use clap::Parser;
 
 use crate::Error;
-use crate::gpu::GPUWorkType;
 
-const DEFAULT_WORKLOAD_SCALE: f32 = 16.;
 
-#[derive(Debug, StructOpt)]
-#[structopt(name = "kaspa-miner", about = "A Kaspa high performance CPU miner")]
+#[derive(Parser, Debug)]
+#[clap(name = "kaspa-miner", about = "A Kaspa high performance CPU miner")]
 pub struct Opt {
-    #[structopt(short, long, help = "Enable debug logging level")]
+    #[clap(short, long, help = "Enable debug logging level")]
     pub debug: bool,
-    #[structopt(short = "a", long = "mining-address", help = "The Kaspa address for the miner reward")]
+    #[clap(short = 'a', long = "mining-address", help = "The Kaspa address for the miner reward")]
     pub mining_address: String,
-    #[structopt(
-        short = "s",
+    #[clap(
+        short = 's',
         long = "kaspad-address",
         default_value = "127.0.0.1",
         help = "The IP of the kaspad instance"
     )]
     pub kaspad_address: String,
 
-    #[structopt(long = "devfund", help = "Mine a percentage of the blocks to the Kaspa devfund", default_value = "kaspa:pzhh76qc82wzduvsrd9xh4zde9qhp0xc8rl7qu2mvl2e42uvdqt75zrcgpm00")]
+    #[clap(long = "devfund", help = "Mine a percentage of the blocks to the Kaspa devfund", default_value = "kaspa:pzhh76qc82wzduvsrd9xh4zde9qhp0xc8rl7qu2mvl2e42uvdqt75zrcgpm00")]
     pub devfund_address: String,
 
-    #[structopt(long = "devfund-percent", help = "The percentage of blocks to send to the devfund", default_value = "1", parse(try_from_str = parse_devfund_percent))]
+    #[clap(long = "devfund-percent", help = "The percentage of blocks to send to the devfund", default_value = "1", parse(try_from_str = parse_devfund_percent))]
     pub devfund_percent: u16,
 
-    #[structopt(short, long, help = "Kaspad port [default: Mainnet = 16111, Testnet = 16211]")]
+    #[clap(short, long, help = "Kaspad port [default: Mainnet = 16111, Testnet = 16211]")]
     port: Option<u16>,
 
-    #[structopt(long, help = "Use testnet instead of mainnet [default: false]")]
+    #[clap(long, help = "Use testnet instead of mainnet [default: false]")]
     testnet: bool,
-    #[structopt(
-        short = "t",
+    #[clap(
+        short = 't',
         long = "threads",
         help = "Amount of miner threads to launch [default: number of logical cpus]"
     )]
     pub num_threads: Option<u16>,
-    #[structopt(
+    #[clap(
         long = "mine-when-not-synced",
         help = "Mine even when kaspad says it is not synced, only useful when passing `--allow-submit-block-when-not-synced` to kaspad  [default: false]"
     )]
     pub mine_when_not_synced: bool,
-    #[structopt(long = "cuda-device", use_delimiter = true, help = "Which CUDA GPUs to use [default: all]")]
-    pub cuda_device: Option<Vec<u16>>,
-    #[structopt(long = "opencl-platform", default_value = "0", help = "Which OpenCL GPUs to use (only GPUs currently. experimental) [default: none]")]
-    pub opencl_platform: u16,
-    #[structopt(long = "opencl-device", use_delimiter = true, help = "Which OpenCL GPUs to use (only GPUs currently. experimental) [default: none]")]
-    pub opencl_device: Option<Vec<u16>>,
-    #[structopt(
-        long = "workload",
-        help = "Ratio of nonces to GPU possible parrallel run [defualt: 16]"
-    )]
-    pub workload: Option<Vec<f32>>,
-    #[structopt(long = "no-gpu", help = "Disable GPU miner [default: false]")]
-    pub no_gpu: bool,
-    #[structopt(
-        long = "workload-absolute",
-        help = "The values given by workload are not ratio, but absolute number of nonces [default: false]"
-    )]
-    pub workload_absolute: bool,
 
-    // Temporary, until better cli is made
-    #[structopt(long, hidden = true, required=false)]
-    pub gpus: Option<Vec<u16>>,
-    #[structopt(long, hidden = true, required=false, default_value = "CUDA")]
-    pub platform: GPUWorkType
+    // #[structopt(long = "cuda-device", use_delimiter = true, help = "Which CUDA GPUs to use [default: all]")]
+    // pub cuda_device: Option<Vec<u16>>,
+    // #[structopt(long = "opencl-platform", default_value = "0", help = "Which OpenCL GPUs to use (only GPUs currently. experimental) [default: none]")]
+    // pub opencl_platform: u16,
+    // #[structopt(long = "opencl-device", use_delimiter = true, help = "Which OpenCL GPUs to use (only GPUs currently. experimental) [default: none]")]
+    // pub opencl_device: Option<Vec<u16>>,
+    // #[structopt(
+    //     long = "workload",
+    //     help = "Ratio of nonces to GPU possible parrallel run [defualt: 16]"
+    // )]
+    // pub workload: Option<Vec<f32>>,
+    // #[structopt(long = "no-gpu", help = "Disable GPU miner [default: false]")]
+    // pub no_gpu: bool,
+    // #[structopt(
+    //     long = "workload-absolute",
+    //     help = "The values given by workload are not ratio, but absolute number of nonces [default: false]"
+    // )]
+    // pub workload_absolute: bool,
+    //
+    // // Temporary, until better cli is made
+    // #[structopt(long, hidden = true, required=false)]
+    // pub gpus: Option<Vec<u16>>,
+    // #[structopt(long, hidden = true, required=false, default_value = "CUDA")]
+    // pub platform: GPUWorkType
 }
 
 fn parse_devfund_percent(s: &str) -> Result<u16, &'static str> {
@@ -98,7 +94,7 @@ fn parse_devfund_percent(s: &str) -> Result<u16, &'static str> {
 
 impl Opt {
     pub fn process(&mut self) -> Result<(), Error> {
-        self.gpus = None;
+        //self.gpus = None;
         if self.kaspad_address.is_empty() {
             self.kaspad_address = "127.0.0.1".to_string();
         }
@@ -120,7 +116,7 @@ impl Opt {
             )
         }
 
-        if self.no_gpu {
+        /*if self.no_gpu {
             self.cuda_device = None;
             self.opencl_device = None;
         } else {
@@ -152,7 +148,7 @@ impl Opt {
                     iter::repeat(*self.workload.clone().unwrap().last().unwrap()).take(fill_size).collect();
                 self.workload = Some([self.workload.clone().unwrap(), fill_vec.clone()].concat());
             }
-        }
+        }*/
         Ok(())
     }
 
