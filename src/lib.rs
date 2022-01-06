@@ -1,48 +1,28 @@
 use std::any::Any;
-use std::str::FromStr;
 use std::error::Error as StdError;
+use clap::ArgMatches;
+
 pub mod xoshiro256starstar;
 use libloading::{Library, Symbol};
 
 
-const DEFAULT_WORKLOAD_SCALE: f32 = 16.;
-
 pub type Error = Box<dyn StdError + Send + Sync + 'static>;
 
-#[derive(Copy, Clone, Debug)]
-pub enum GPUWorkType{
-    CUDA,
-    OPENCL
-}
 
-impl FromStr for GPUWorkType {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "CUDA" => Ok(Self::CUDA),
-            "OPENCL" => Ok(Self::OPENCL),
-            _ => Err(String::from("Unknown string"))
-        }
-    }
-}
-
-pub struct GPUWorkFactory {
-    pub plugins: Vec<Box<dyn Plugin>>,
+pub struct PluginManager {
+    plugins: Vec<Box<dyn Plugin>>,
     loaded_libraries: Vec<Library>,
-    type_: GPUWorkType,
-    opencl_platform: u16,
-    device_id: u32,
-    workload: f32,
-    is_absolute: bool
 }
 
-impl GPUWorkFactory {
+/**
+ Plugin Manager class - allows inserting your own hashers
+ Inspired by https://michael-f-bryan.github.io/rust-ffi-guide/dynamic_loading.html
+*/
+impl PluginManager {
     pub fn new() -> Self {
         Self{
             plugins: Vec::new(),
             loaded_libraries: Vec::new(),
-            type_: GPUWorkType::CUDA, opencl_platform: 0, device_id: 0, workload: 16., is_absolute: false
         }
     }
 
@@ -65,25 +45,32 @@ impl GPUWorkFactory {
         Ok(*Box::from_raw(app))
     }
 
-    pub fn build(&self) -> Result<Box<dyn WorkerSpec + 'static>, Error> {
-        /*match self.type_ {
-            GPUWorkType::CUDA  => Ok(Box::new(CudaGPUWork::new(self.device_id, self.workload, self.is_absolute)?)),
-            GPUWorkType::OPENCL => {
-                let platforms = get_platforms().unwrap();
-                let platform = &platforms[self.opencl_platform as usize];
-                let device_ids = platform.get_devices(CL_DEVICE_TYPE_ALL).unwrap();
-                Ok(Box::new(OpenCLGPUWork::new(device_ids[self.device_id as usize], self.workload, self.is_absolute)?))
-            } // TODO: return error
-        }*/
-        Ok(self.plugins.last().unwrap().get_worker_spec())
+    pub fn build(&self) -> Result<Vec<Box<dyn WorkerSpec + 'static>>, Error> {
+        Ok(self.plugins.last().unwrap().get_worker_specs())
+    }
+
+    pub fn process_options(&mut self, matchs: &ArgMatches) -> Result<(), Error>{
+        self.plugins.iter_mut().for_each(|plugin| {
+            plugin.process_option(matchs).expect(
+                format!("Could not process option for plugin {}", plugin.name()).as_str()
+            )
+        });
+        Ok(())
     }
 }
 
 pub trait Plugin: Any + Send + Sync {
-    fn get_worker_spec(&self) -> Box<dyn WorkerSpec>;
+    fn name(&self) -> &'static str;
+    fn get_worker_specs(&self) -> Vec<Box<dyn WorkerSpec>>;
+    fn process_option(&mut self, matchs: &ArgMatches) -> Result<(), Error>;
 }
 
 pub trait WorkerSpec: Any + Send + Sync {
+    /*type_: GPUWorkType,
+    opencl_platform: u16,
+    device_id: u32,
+    workload: f32,
+    is_absolute: bool*/
     fn build (&self) -> Box<dyn Worker>;
 }
 
@@ -97,15 +84,13 @@ pub trait Worker {
 
     fn get_workload(&self) -> usize;
     fn copy_output_to(&mut self, nonces: &mut Vec<u64>) -> Result<(), Error>;
-    //pub(crate) fn check_random(&self) -> Result<(),Error>;
-    //pub(crate) fn copy_input_from(&mut self, nonces: &Vec<u64>);
 }
 
-pub fn load_plugins<'help>(app: clap::App<'help>, paths: &[&str]) -> Result<(clap::App<'help>, GPUWorkFactory),Error> {
-    let mut factory = GPUWorkFactory::new();
+pub fn load_plugins<'help>(app: clap::App<'help>, paths: &[String]) -> Result<(clap::App<'help>, PluginManager),Error> {
+    let mut factory = PluginManager::new();
     let mut app = app;
     for path in paths {
-        app = unsafe { factory.load_single_plugin(app, *path)? };
+        app = unsafe { factory.load_single_plugin(app, path.as_str())? };
     }
     Ok((app, factory))
 }
@@ -126,14 +111,4 @@ macro_rules! declare_plugin {
             (Box::into_raw(boxed_app), Box::into_raw(boxed))
         }
     };
-}
-
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        let result = 2 + 2;
-        assert_eq!(result, 4);
-    }
 }

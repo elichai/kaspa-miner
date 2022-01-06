@@ -1,4 +1,3 @@
-use clap::Args;
 
 #[derive(clap::Args, Debug)]
 pub struct CudaOpt {
@@ -14,8 +13,4 @@ pub struct CudaOpt {
     help = "The values given by workload are not ratio, but absolute number of nonces [default: false]"
     )]
     pub cuda_workload_absolute: bool,
-}
-
-impl CudaOpt {
-
 }

@@ -4,6 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies]
+kaspa_miner = {path = "../../", package="kaspa-miner"}
+clap = { version = "3.0", features = ["color", "derive"]}
+env_logger = "0.9"
+
 [lib]
 crate-type = ["cdylib"]
 

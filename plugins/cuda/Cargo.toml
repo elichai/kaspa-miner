@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-work_manager = {path = "../work_manager" }
+kaspa-miner = {path = "../../"}
 cust ="0.2"
 log = "0.4"
 rand = "0.8"

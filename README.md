@@ -9,25 +9,20 @@ A Rust binary for file encryption to multiple participants.
 
 ## Installation
 ### From Sources
-With Rust's package manager cargo, you can install CUDA supported kaspa-miner via:
+With Rust's package manager cargo, you can install the plugin supported kaspa-miner, with all
+plugins, via:
 
 ```sh
-rustup default nightly
-cargo install --git https://github.com/tmrlvi/kaspa-miner.git
+cargo install --git https://github.com/tmrlvi/kaspa-miner.git --all
 ```
 
-This version includes a precompiled PTX, which would work with most modern GPUs. To compile the PTX youself, 
-you have to clone the project:
+To install the miner with only a specific plugin, add `-p` and the plugin name. For example, 
+to add CUDA support to the kaspa-miner, run:
 
 ```sh
-git clone https://github.com/tmrlvi/kaspa-miner.git
-cd kaspa-miner
-# Using cuda nvcc that supports sm_30 (e.g., 9.2)
-nvcc kaspa-cuda-native/src/kaspa-cuda.cu -std=c++11 -O3 --restrict --ptx --gpu-architecture=compute_30 --gpu-code=sm_30 -o ./resources/kaspa-cuda-sm30.ptx -Xptxas -O3 -Xcompiler -O3
-# Using cuda nvcc from a recent cuda (e.g. 11.5)
-nvcc kaspa-cuda-native/src/kaspa-cuda.cu -std=c++11 -O3 --restrict --ptx --gpu-architecture=compute_61 --gpu-code=sm_61 -o ./resources/kaspa-cuda-sm61.ptx -Xptxas -O3 -Xcompiler -O3 
-cargo build --release
+cargo install --git https://github.com/tmrlvi/kaspa-miner.git -p kaspacuda
 ```
+
 
 The regular version is still available at
 ```sh
@@ -87,6 +82,9 @@ The devfund is a fund managed by the Kaspa community in order to fund Kaspa deve
 A miner that wants to mine a percentage into the dev-fund can pass the following flags: <br>
 `kaspa-miner --mining-address= XXX --devfund=kaspa:precqv0krj3r6uyyfa36ga7s0u9jct0v4wg8ctsfde2gkrsgwgw8jgxfzfc98` <br>
 and can pass `--devfund-precent=XX.YY` to mine only XX.YY% of the blocks into the devfund (passing `--devfund` without specifying a percent will default to 1%)
+
+**This version automatically sets the devfund donation to the community designated address. 
+To turn it off, run `--devfund-precent=0`**
 
 # Donation Addresses
 

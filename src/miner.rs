@@ -11,7 +11,7 @@ use tokio::sync::mpsc::Sender;
 use tokio::task::{self, JoinHandle};
 use tokio::time::MissedTickBehavior;
 
-use work_manager::{GPUWorkFactory, Plugin, WorkerSpec};
+use kaspa_miner::{PluginManager, WorkerSpec};
 
 type MinerHandler = std::thread::JoinHandle<Result<(), Error>>;
 
@@ -44,7 +44,7 @@ impl MinerManager {
     pub fn new(
         send_channel: Sender<KaspadMessage>,
         n_cpus: Option<u16>,
-        manager: &work_manager::GPUWorkFactory
+        manager: &PluginManager
     ) -> Self {
         let hashes_tried = Arc::new(AtomicU64::new(0));
         let (send, recv) = watch::channel(None);
@@ -79,11 +79,11 @@ impl MinerManager {
         send_channel: Sender<KaspadMessage>,
         hashes_tried: Arc<AtomicU64>,
         work_channel: watch::Receiver<Option<pow::State>>,
-        manager: &work_manager::GPUWorkFactory
+        manager: &PluginManager
     ) -> Vec<MinerHandler>{
         let mut vec = Vec::<MinerHandler>::new();
-        for i in 0..1 {
-            let spec = manager.build().unwrap();
+        let specs = manager.build().unwrap();
+        for spec in specs {
             vec.push(Self::launch_gpu_miner(
                 send_channel.clone(),
                 work_channel.clone(),
@@ -115,19 +115,18 @@ impl MinerManager {
         Ok(())
     }
 
+    #[allow(unreachable_code)]
     fn launch_gpu_miner(
         send_channel: Sender<KaspadMessage>,
         mut block_channel: watch::Receiver<Option<pow::State>>,
         hashes_tried: Arc<AtomicU64>,
         spec: Box<dyn WorkerSpec>
     ) -> MinerHandler {
-        //let spec = factory.plugins.last().unwrap().get_worker_spec();
         std::thread::spawn(move || {
             let mut box_ = spec.build();
             let gpu_work =box_.as_mut();
             (|| {
                 info!("Spawned Thread for GPU {}", gpu_work.id());
-                //let mut gpu_work = gpu_ctx.get_worker(workload).unwrap();
                 let mut nonces = vec![0u64; 1];
 
                 let mut state = None;
@@ -213,6 +212,7 @@ impl MinerManager {
         })
     }
 
+    #[allow(unreachable_code)]
     pub fn launch_cpu_miner(
         send_channel: Sender<KaspadMessage>,
         mut block_channel: watch::Receiver<Option<pow::State>>,

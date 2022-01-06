@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use work_manager::Worker;
+use kaspa_miner::Worker;
 pub use crate::pow::hasher::HeaderHasher;
 use crate::{
     pow::{

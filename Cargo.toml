@@ -37,7 +37,7 @@ env_logger = "0.9"
 keccak = { version = "0.1", optional = true }
 parking = { package = "parking_lot", version = "0.11", optional = true }
 shuttle = { version = "0.0.7", optional = true }
-work_manager = {path="plugins/work_manager"}
+libloading = "0.7"
 
 [features]
 default = ["parking_lot"]
@@ -58,3 +58,6 @@ cc = "1"
 
 [dev-dependencies]
 sha3 = { git = "https://github.com/elichai/hashes", branch = "cSHAKE" }
+
+[workspace]
+members = ["plugins/cuda"]

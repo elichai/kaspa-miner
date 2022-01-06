@@ -43,8 +43,6 @@ pub struct Opt {
     )]
     pub mine_when_not_synced: bool,
 
-    // #[structopt(long = "cuda-device", use_delimiter = true, help = "Which CUDA GPUs to use [default: all]")]
-    // pub cuda_device: Option<Vec<u16>>,
     // #[structopt(long = "opencl-platform", default_value = "0", help = "Which OpenCL GPUs to use (only GPUs currently. experimental) [default: none]")]
     // pub opencl_platform: u16,
     // #[structopt(long = "opencl-device", use_delimiter = true, help = "Which OpenCL GPUs to use (only GPUs currently. experimental) [default: none]")]
@@ -62,11 +60,6 @@ pub struct Opt {
     // )]
     // pub workload_absolute: bool,
     //
-    // // Temporary, until better cli is made
-    // #[structopt(long, hidden = true, required=false)]
-    // pub gpus: Option<Vec<u16>>,
-    // #[structopt(long, hidden = true, required=false, default_value = "CUDA")]
-    // pub platform: GPUWorkType
 }
 
 fn parse_devfund_percent(s: &str) -> Result<u16, &'static str> {
