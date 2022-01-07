@@ -52,9 +52,9 @@ fn filter_plugins(dirname: &str) -> Vec<String>{
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let mut path = current_exe().unwrap_or_default();
-    path.pop();
+    path.pop(); // Getting the parent directory
     let plugins = filter_plugins(path.to_str().unwrap_or("."));
-    let (app, mut plugin_manager): (App, PluginManager) = kaspa_miner::load_plugins(Opt::into_app(), &plugins)?;
+    let (app, mut plugin_manager): (App, PluginManager) = kaspa_miner::load_plugins(Opt::into_app().term_width(0), &plugins)?;
 
     let matches = app.get_matches();
 

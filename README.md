@@ -41,35 +41,32 @@ There's a guide here on how to run a full node and how to generate addresses: ht
 
 Help:
 ```
-kaspa-miner 0.2.1-GPU-0.1
+kaspa-miner 
 A Kaspa high performance CPU miner
 
 USAGE:
-    kaspa-miner [FLAGS] [OPTIONS] --mining-address <mining-address>
-
-FLAGS:
-    -d, --debug                   Enable debug logging level
-    -h, --help                    Prints help information
-        --mine-when-not-synced    Mine even when kaspad says it is not synced, only useful when passing `--allow-submit-
-                                  block-when-not-synced` to kaspad  [default: false]
-        --no-gpu                  Disable GPU miner [default: false]
-        --testnet                 Use testnet instead of mainnet [default: false]
-    -V, --version                 Prints version information
-        --workload-absolute       The values given by workload are not ratio, but absolute number of nonces [default:
-                                  false]
+    kaspa-miner [OPTIONS] --mining-address <MINING_ADDRESS>
 
 OPTIONS:
-        --cuda-device <cuda-device>...         Which CUDA GPUs to use [default: all]
-        --devfund <devfund-address>            Mine a percentage of the blocks to the Kaspa devfund [default:
-                                               kaspa:pzhh76qc82wzduvsrd9xh4zde9qhp0xc8rl7qu2mvl2e42uvdqt75zrcgpm00]
-        --devfund-percent <devfund-percent>    The percentage of blocks to send to the devfund [default: 1]
-    -s, --kaspad-address <kaspad-address>      The IP of the kaspad instance [default: 127.0.0.1]
-    -a, --mining-address <mining-address>      The Kaspa address for the miner reward
-    -t, --threads <num-threads>                Amount of miner threads to launch [default: number of logical cpus]
-        --opencl-device <opencl-device>...     Which OpenCL GPUs to use (only GPUs currently. experimental) [default:
-                                               none]
-    -p, --port <port>                          Kaspad port [default: Mainnet = 16111, Testnet = 16211]
-        --workload <workload>...               Ratio of nonces to GPU possible parrallel run [defualt: 16]
+    -a, --mining-address <MINING_ADDRESS>      The Kaspa address for the miner reward
+        --cuda-device <CUDA_DEVICE>            Which CUDA GPUs to use [default: all]
+        --cuda-disable                         
+        --cuda-workload <CUDA_WORKLOAD>        Ratio of nonces to GPU possible parrallel run [defualt: 16]
+        --cuda-workload-absolute               The values given by workload are not ratio, but absolute number of nonces [default: false]
+    -d, --debug                                Enable debug logging level
+        --devfund <DEVFUND_ADDRESS>            Mine a percentage of the blocks to the Kaspa devfund [default: kaspa:pzhh76qc82wzduvsrd9xh4zde9qhp0xc8rl7qu2mvl2e42uvdqt75zrcgpm00]
+        --devfund-percent <DEVFUND_PERCENT>    The percentage of blocks to send to the devfund [default: 1]
+    -h, --help                                 Print help information
+        --mine-when-not-synced                 Mine even when kaspad says it is not synced, only useful when passing `--allow-submit-block-when-not-synced` to kaspad  [default: false]
+        --opencl-device <OPENCL_DEVICE>        Which OpenCL GPUs to use on a specific platform
+        --opencl-enable                        
+        --opencl-platform <OPENCL_PLATFORM>    Which OpenCL platform to use (limited to one per executable)
+        --opencl-workload <OPENCL_WORKLOAD>    Ratio of nonces to GPU possible parrallel run in OpenCL [defualt: 16]
+        --opencl-workload-absolute             The values given by workload are not ratio, but absolute number of nonces in OpenCL [default: false]
+    -p, --port <PORT>                          Kaspad port [default: Mainnet = 16111, Testnet = 16211]
+    -s, --kaspad-address <KASPAD_ADDRESS>      The IP of the kaspad instance [default: 127.0.0.1]
+    -t, --threads <NUM_THREADS>                Amount of miner threads to launch [default: number of logical cpus]
+        --testnet                              Use testnet instead of mainnet [default: false]
 ```
 
 To start mining you just need to run the following:
