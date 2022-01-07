@@ -22,9 +22,11 @@ If you are looking to build from the repository (for debug / extension), note th
 packages in the workspace. To compile a specific package, run the following command or any subset of it
 
 ```sh
+git clone git@github.com:tmrlvi/kaspa-miner.git
+cd kaspa-miner
 cargo build --release -p kaspa-miner -p kaspacuda -p kaspaopencl
 ```
-or simply
+And, the miner (and plugins) will be in `targets/release`. You can replace the last line with
 ```sh
 cargo build --release --all
 ```
