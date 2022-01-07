@@ -69,7 +69,7 @@ jobs:
           mkdir ${asset_name}
           mv ./target/x86_64-pc-windows-msvc/release/kaspa-miner.exe ${asset_name}/${asset_name}.exe
           mv ./target/x86_64-pc-windows-msvc/release/kaspa*.dll ${asset_name}/
-          zip -r ${asset_name}.zip ${asset_name}
+          7z a -tzip -r ${asset_name}.zip ${asset_name}
           echo "archive=${asset_name}.zip" >> $GITHUB_ENV
           echo "asset_name=${asset_name}.zip" >> $GITHUB_ENV
 
