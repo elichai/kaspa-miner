@@ -58,13 +58,8 @@ pub struct CudaGPUWorker<'gpu> {
     stream: Stream,
     rand_state: DeviceBuffer<[u64;4]>,
 
-    nonces_buff: DeviceBuffer<u64>,
-    pow_hashes_buff: DeviceBuffer<[u8; 32]>,
-    matrix_mul_out_buff: DeviceBuffer<[u8; 32]>,
     final_nonce_buff: DeviceBuffer<u64>,
 
-    pow_hash_kernel: Kernel<'gpu>,
-    matrix_mul_kernel: Kernel<'gpu>,
     heavy_hash_kernel: Kernel<'gpu>,
 }
 
@@ -92,63 +87,19 @@ impl<'gpu> Worker for CudaGPUWorker<'gpu> {
     }
 
     #[inline(always)]
-    fn calculate_hash(&mut self, nonces: Option<&Vec<u64>>) {
-        let func = &self.pow_hash_kernel.func;
-        let stream = &self.stream;
-        let mut generate = true;
-        if let Some(inner) = nonces {
-            self.nonces_buff.copy_from(inner).unwrap();
-            generate = false;
-        }
-        unsafe {
-            launch!(
-                func<<<
-                    self.pow_hash_kernel.grid_size, self.pow_hash_kernel.block_size,
-                    0, stream
-                >>>(
-                    self.nonces_buff.as_device_ptr(),
-                    self.nonces_buff.len(),
-                    self.pow_hashes_buff.as_device_ptr(),
-                    generate,
-                    self.rand_state.as_device_ptr(),
-                )
-            )
-                .unwrap(); // We see errors in sync
-        }
-
-        let func = &self.matrix_mul_kernel.func;
-        let stream = &self.stream;
-        unsafe {
-            launch!(
-                func<<<
-                    (32, self.matrix_mul_kernel.grid_size),
-                    (1, self.matrix_mul_kernel.block_size),
-                    0, stream
-                >>>(
-                        self.pow_hashes_buff.as_device_ptr(),
-                        self.pow_hashes_buff.len(),
-                        self.matrix_mul_out_buff.as_device_ptr()
-                )
-            )
-                .unwrap(); // We see errors in sync
-        }
-        // TODO: synchronize?
-
+    fn calculate_hash(&mut self, _nonces: Option<&Vec<u64>>) {
         let func = &self.heavy_hash_kernel.func;
         let stream = &self.stream;
 
-        self.final_nonce_buff.copy_from(&[0u64; 1]).map_err(|e| e.to_string()).unwrap();
         unsafe {
             launch!(
                 func<<<
-                    self.heavy_hash_kernel.grid_size,
-                    self.heavy_hash_kernel.block_size,
+                    self.heavy_hash_kernel.grid_size, self.heavy_hash_kernel.block_size,
                     0, stream
                 >>>(
-                    self.nonces_buff.as_device_ptr(),
-                    self.matrix_mul_out_buff.as_device_ptr(),
-                    self.matrix_mul_out_buff.len(),
-                    self.final_nonce_buff.as_device_ptr(),
+                    self.rand_state.len(),
+                    self.rand_state.as_device_ptr(),
+                    self.final_nonce_buff.as_device_ptr()
                 )
             )
                 .unwrap(); // We see errors in sync
@@ -199,32 +150,22 @@ impl<'gpu> CudaGPUWorker<'gpu> {
 
         let stream = Stream::new(StreamFlags::NON_BLOCKING, None)?;
 
-        let mut pow_hash_kernel = Kernel::new(Arc::downgrade(&_module), "pow_cshake")?;
-        let mut matrix_mul_kernel = Kernel::new(Arc::downgrade(&_module), "matrix_mul")?;
-        let mut heavy_hash_kernel = Kernel::new(Arc::downgrade(&_module), "heavy_hash_cshake")?;
+        let mut heavy_hash_kernel = Kernel::new(Arc::downgrade(&_module), "heavy_hash")?;
 
         let mut chosen_workload = 0 as usize;
         if is_absolute {
             chosen_workload = 1;
         } else {
-            for ker in [&pow_hash_kernel, &matrix_mul_kernel, &heavy_hash_kernel] {
-                let cur_workload = ker.get_workload();
-                if chosen_workload == 0 || chosen_workload < cur_workload as usize {
-                    chosen_workload = cur_workload as usize;
-                }
+            let cur_workload = heavy_hash_kernel.get_workload();
+            if chosen_workload == 0 || chosen_workload < cur_workload as usize {
+                chosen_workload = cur_workload as usize;
             }
         }
         chosen_workload = (chosen_workload as f32 * workload) as usize;
         info!("GPU #{} Chosen workload: {}", device_id, chosen_workload);
-        for ker in [&mut pow_hash_kernel, &mut matrix_mul_kernel, &mut heavy_hash_kernel] {
-            ker.set_workload(chosen_workload as u32);
-        }
+        heavy_hash_kernel.set_workload(chosen_workload as u32);
 
         let mut rand_state = unsafe { DeviceBuffer::<[u64;4]>::zeroed(chosen_workload).unwrap() };
-
-        let nonces_buff = vec![0u64; chosen_workload].as_slice().as_dbuf()?;
-        let pow_hashes_buff = vec![[0u8; 32]; chosen_workload].as_slice().as_dbuf()?;
-        let matrix_mul_out_buff = vec![[0u8; 32]; chosen_workload].as_slice().as_dbuf()?;
 
         let final_nonce_buff = vec![0u64; 1].as_slice().as_dbuf()?;
 
@@ -240,12 +181,7 @@ impl<'gpu> CudaGPUWorker<'gpu> {
             workload: chosen_workload,
             stream,
             rand_state,
-            nonces_buff,
-            pow_hashes_buff,
-            matrix_mul_out_buff,
             final_nonce_buff,
-            pow_hash_kernel,
-            matrix_mul_kernel,
             heavy_hash_kernel,
         })
     }

@@ -4,8 +4,6 @@ use clap::ArgMatches;
 
 pub mod xoshiro256starstar;
 use libloading::{Library, Symbol};
-use log::error;
-use std::iter;
 
 
 pub type Error = Box<dyn StdError + Send + Sync + 'static>;

@@ -24,7 +24,10 @@ packages in the workspace. To compile a specific package, run the following comm
 ```sh
 cargo build --release -p kaspa-miner -p kaspacuda -p kaspaopencl
 ```
-
+or simply
+```sh
+cargo build --release --all
+```
 
 ### From Binaries
 The [release page](https://github.com/tmrlvi/kaspa-miner/releases) includes precompiled binaries for Linux, and Windows (for the GPU version).
@@ -52,21 +55,26 @@ OPTIONS:
         --cuda-device <CUDA_DEVICE>            Which CUDA GPUs to use [default: all]
         --cuda-disable                         
         --cuda-workload <CUDA_WORKLOAD>        Ratio of nonces to GPU possible parrallel run [defualt: 16]
-        --cuda-workload-absolute               The values given by workload are not ratio, but absolute number of nonces [default: false]
+        --cuda-workload-absolute               The values given by workload are not ratio, but absolute number of nonces
+                                               [default: false]
     -d, --debug                                Enable debug logging level
-        --devfund <DEVFUND_ADDRESS>            Mine a percentage of the blocks to the Kaspa devfund [default: kaspa:pzhh76qc82wzduvsrd9xh4zde9qhp0xc8rl7qu2mvl2e42uvdqt75zrcgpm00]
+        --devfund <DEVFUND_ADDRESS>            Mine a percentage of the blocks to the Kaspa devfund [default:
+                                               kaspa:pzhh76qc82wzduvsrd9xh4zde9qhp0xc8rl7qu2mvl2e42uvdqt75zrcgpm00]
         --devfund-percent <DEVFUND_PERCENT>    The percentage of blocks to send to the devfund [default: 1]
     -h, --help                                 Print help information
-        --mine-when-not-synced                 Mine even when kaspad says it is not synced, only useful when passing `--allow-submit-block-when-not-synced` to kaspad  [default: false]
+        --mine-when-not-synced                 Mine even when kaspad says it is not synced, only useful when passing
+                                               `--allow-submit-block-when-not-synced` to kaspad  [default: false]
         --opencl-device <OPENCL_DEVICE>        Which OpenCL GPUs to use on a specific platform
         --opencl-enable                        
         --opencl-platform <OPENCL_PLATFORM>    Which OpenCL platform to use (limited to one per executable)
         --opencl-workload <OPENCL_WORKLOAD>    Ratio of nonces to GPU possible parrallel run in OpenCL [defualt: 16]
-        --opencl-workload-absolute             The values given by workload are not ratio, but absolute number of nonces in OpenCL [default: false]
+        --opencl-workload-absolute             The values given by workload are not ratio, but absolute number of nonces
+                                               in OpenCL [default: false]
     -p, --port <PORT>                          Kaspad port [default: Mainnet = 16111, Testnet = 16211]
     -s, --kaspad-address <KASPAD_ADDRESS>      The IP of the kaspad instance [default: 127.0.0.1]
     -t, --threads <NUM_THREADS>                Amount of miner threads to launch [default: number of logical cpus]
         --testnet                              Use testnet instead of mainnet [default: false]
+
 ```
 
 To start mining you just need to run the following:

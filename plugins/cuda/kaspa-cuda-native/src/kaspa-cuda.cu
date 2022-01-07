@@ -51,55 +51,48 @@ __device__ __inline__ uint32_t amul4bit(uint32_t packed_vec1[32], uint32_t packe
 
 extern "C" {
 
-    __global__ void matrix_mul(const Hash *hashes, const uint64_t hashes_len, Hash *outs)
-    {
-        int rowId = threadIdx.x + blockIdx.x*blockDim.x;
-        int hashId = threadIdx.y + blockIdx.y*blockDim.y;
-        //assert((rowId != 0) || (hashId != 0) );
 
-        if (rowId < HALF_MATRIX_SIZE && hashId < hashes_len) {
-            uchar4 packed_hash[QUARTER_MATRIX_SIZE] = {0};
-            #pragma unroll
-            for (int i=0; i<QUARTER_MATRIX_SIZE; i++) {
-                packed_hash[i] = make_uchar4(
-                    (hashes[hashId][2*i] & 0xF0) >> 4 ,
-                    (hashes[hashId][2*i] & 0x0F),
-                    (hashes[hashId][2*i+1] & 0xF0) >> 4,
-                    (hashes[hashId][2*i+1] & 0x0F)
-                );
-            }
-            uint32_t product1 = amul4bit((uint32_t *)(matrix[(2*rowId)]), (uint32_t *)(packed_hash)) >> 10;
-            uint32_t product2 = amul4bit((uint32_t *)(matrix[(2*rowId+1)]), (uint32_t *)(packed_hash)) >> 10;
-
-
-            outs[hashId][rowId] = hashes[hashId][rowId] ^ ((uint8_t)(product1 << 4) | (uint8_t)(product2));
-            }
-    }
-
-    __global__ void pow_cshake(uint64_t *nonces, const uint64_t nonces_len, Hash *hashes, const bool generate, ulonglong4* states) {
+    __global__ void heavy_hash(const uint64_t nonces_len, ulonglong4* states, uint64_t *final_nonce) {
         // assuming header_len is 72
         int nonceId = threadIdx.x + blockIdx.x*blockDim.x;
         if (nonceId < nonces_len) {
-            if (generate) nonces[nonceId] = xoshiro256_next(states + nonceId);
+            if (nonceId == 0) *final_nonce = 0;
+            uint64_t nonce = xoshiro256_next(states + nonceId);
             // header
             uint8_t input[80];
             memcpy(input, hash_header, HASH_HEADER_SIZE);
             // data
             // TODO: check endianity?
-            memcpy(input +  HASH_HEADER_SIZE, (uint8_t *)(nonces + nonceId), 8);
-            hash(powP, hashes[nonceId], 32, input, 80, 136, 0x04);
-        }
-    }
+            uint256_t hash_;
+            memcpy(input +  HASH_HEADER_SIZE, (uint8_t *)(&nonce), 8);
+            hash(powP, hash_.hash, 32, input, 80, 136, 0x04);
 
-    __global__ void heavy_hash_cshake(const uint64_t *nonces, const Hash *datas, const uint64_t data_len, uint64_t *final_nonce/*, Hash *all_hashes*/) {
-        assert(blockDim.x <= BLOCKDIM);
-        uint64_t dataId = threadIdx.x + blockIdx.x*blockDim.x;
-        if (dataId < data_len) {
-            uint256_t working_hash;
-            hash(heavyP, working_hash.hash, 32, datas[dataId], 32, 136, 0x04);
-            if (LT_U256(working_hash, target)){
-                atomicCAS((unsigned long long int*) final_nonce, 0, (unsigned long long int) nonces[dataId]);
+            //assert((rowId != 0) || (hashId != 0) );
+            uchar4 packed_hash[QUARTER_MATRIX_SIZE] = {0};
+            #pragma unroll
+            for (int i=0; i<QUARTER_MATRIX_SIZE; i++) {
+                packed_hash[i] = make_uchar4(
+                    (hash_.hash[2*i] & 0xF0) >> 4 ,
+                    (hash_.hash[2*i] & 0x0F),
+                    (hash_.hash[2*i+1] & 0xF0) >> 4,
+                    (hash_.hash[2*i+1] & 0x0F)
+                );
+            }
+
+            for (int rowId=0; rowId<HALF_MATRIX_SIZE; rowId++){
+
+                uint32_t product1 = amul4bit((uint32_t *)(matrix[(2*rowId)]), (uint32_t *)(packed_hash)) >> 10;
+                uint32_t product2 = amul4bit((uint32_t *)(matrix[(2*rowId+1)]), (uint32_t *)(packed_hash)) >> 10;
+
+
+                hash_.hash[rowId] = hash_.hash[rowId] ^ ((uint8_t)(product1 << 4) | (uint8_t)(product2));
+            }
+
+            hash(heavyP, hash_.hash, 32, hash_.hash, 32, 136, 0x04);
+            if (LT_U256(hash_, target)){
+                atomicCAS((unsigned long long int*) final_nonce, 0, (unsigned long long int) nonce);
             }
         }
     }
+
 }
