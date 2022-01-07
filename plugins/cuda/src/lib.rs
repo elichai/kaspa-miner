@@ -63,7 +63,7 @@ impl Plugin for CudaPlugin {
             |i| CudaWorkerSpec{
                 device_id: gpus[i] as u32,
                 workload: match &opts.cuda_workload {
-                    Some(workload) if workload.len() < i => workload[i],
+                    Some(workload) if i < workload.len()  => workload[i],
                     Some(workload) if workload.len() > 0 => *workload.last().unwrap(),
                     _ => DEFAULT_WORKLOAD_SCALE
                 },

@@ -17,6 +17,12 @@ jobs:
         if: runner.os == 'Windows'
         run: git config --global core.autocrlf false
 
+      - name: Fix LibOpenCL on Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt update
+          sudo apt install ocl-icd-opencl-dev 
+
       - name: Check out code into the Go module directory
         uses: actions/checkout@v2
 
@@ -47,8 +53,8 @@ jobs:
           asset_name="kaspa-miner-${{ github.event.release.tag_name }}-linux-gnu-amd64"
           strip ./target/x86_64-unknown-linux-gnu/release/kaspa-miner
           mkdir ${asset_name}
-          mv ./target/x86_64-pc-windows-msvc/release/kaspa-miner ${asset_name}/${asset_name}
-          mv ./target/x86_64-pc-windows-msvc/release/libkaspa*.so ${asset_name}/
+          mv ./target/x86_64-unknown-linux-gnu/release/kaspa-miner ${asset_name}/${asset_name}
+          mv ./target/x86_64-unknown-linux-gnu/release/libkaspa*.so ${asset_name}/
           tar czvf ${asset_name}.tgz ${asset_name}
           echo "archive=${asset_name}.tgz" >> $GITHUB_ENV
           echo "asset_name=${asset_name}.tgz" >> $GITHUB_ENV
