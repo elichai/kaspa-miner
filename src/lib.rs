@@ -29,7 +29,10 @@ impl PluginManager {
     pub(crate) unsafe fn load_single_plugin<'help>(&mut self, app: clap::App<'help>, path: &str) -> Result<clap::App<'help>,(clap::App<'help>,Error)> {
         type PluginCreate<'help> = unsafe fn(*const clap::App<'help>) -> (*mut clap::App<'help>, *mut dyn Plugin);
 
-        let lib = Library::new(path).expect("Unable to load the plugin");
+        let lib = match Library::new(path) {
+            Ok(l) => l,
+            Err(e) => return Err((app, e.to_string().into()))
+        };
         self.loaded_libraries.push(lib);
         let lib = self.loaded_libraries.last().unwrap();
 

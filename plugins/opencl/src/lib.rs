@@ -54,13 +54,19 @@ impl Plugin for OpenCLPlugin {
 
         let platforms = get_platforms().expect("opencl: could not find any platforms");
         let platform: Platform = match opts.opencl_platform {
-            Some(idx) => platforms[idx as usize],
+            Some(idx) => {
+                self._enabled = true;
+                platforms[idx as usize]
+            },
             None => platforms[0]
         };
 
         let device_ids = platform.get_devices(CL_DEVICE_TYPE_ALL).unwrap();
         let gpus = match opts.opencl_device {
-            Some(dev) => dev.iter().map(|d| device_ids[*d as usize]).collect::<Vec<cl_device_id>>(),
+            Some(dev) => {
+                self._enabled = true;
+                dev.iter().map(|d| device_ids[*d as usize]).collect::<Vec<cl_device_id>>()
+            },
             None => device_ids.clone()
         };
 
@@ -76,6 +82,7 @@ impl Plugin for OpenCLPlugin {
                 is_absolute: opts.opencl_workload_absolute
             }
         ).collect();
+
         Ok(())
     }
 }

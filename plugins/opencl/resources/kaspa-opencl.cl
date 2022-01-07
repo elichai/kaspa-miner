@@ -148,18 +148,46 @@ STATIC inline int hash(const __constant uint8_t initP[Plen], uint8_t* out, size_
 /* RANDOM NUMBER GENERATOR BASED ON MWC64X                          */
 /* http://cas.ee.ic.ac.uk/people/dt10/research/rngs-gpu-mwc64x.html */
 
-inline STATIC ulong MWC128X(global ulong2 *state)
-{
-    enum { A=18446744073709550874UL };
-    ulong x=(*state).x, c=(*state).y;  // Unpack the state
-    ulong res=x^c;                     // Calculate the result
-    ulong hi=mul_hi(x,A);              // Step the RNG
-    x=x*A+c;
-    c=hi+(x<c);
-    *state=(ulong2)(x,c);             // Pack the state back up
-    return res;                       // Return the next result
+/*  Written in 2018 by David Blackman and Sebastiano Vigna (vigna@acm.org)
+
+To the extent possible under law, the author has dedicated all copyright
+and related and neighboring rights to this software to the public domain
+worldwide. This software is distributed without any warranty.
+
+See <http://creativecommons.org/publicdomain/zero/1.0/>. */
+
+
+/* This is xoshiro256** 1.0, one of our all-purpose, rock-solid
+   generators. It has excellent (sub-ns) speed, a state (256 bits) that is
+   large enough for any parallel application, and it passes all tests we
+   are aware of.
+
+   For generating just floating-point numbers, xoshiro256+ is even faster.
+
+   The state must be seeded so that it is not everywhere zero. If you have
+   a 64-bit seed, we suggest to seed a splitmix64 generator and use its
+   output to fill s. */
+
+inline uint64_t rotl(const uint64_t x, int k) {
+	return (x << k) | (x >> (64 - k));
 }
 
+inline uint64_t xoshiro256_next(global ulong4 *s) {
+	const uint64_t result = rotl(s->y * 5, 7) * 9;
+
+	const uint64_t t = s->y << 17;
+
+	s->z ^= s->x;
+	s->w ^= s->y;
+	s->y ^= s->z;
+	s->x ^= s->w;
+
+	s->z ^= t;
+
+	s->w = rotl(s->w, 45);
+
+	return result;
+}
 /* KERNEL CODE */
 
 #ifdef cl_khr_int64_base_atomics
@@ -183,23 +211,24 @@ __constant STATIC const uint8_t heavyP[Plen] = { 0x09, 0x85, 0x24, 0xb2, 0x52, 0
 __constant int lock = false;
 
 kernel void heavy_hash(
-    global const uint8_t hash_header[HASH_HEADER_SIZE],
-    global const uint8_t matrix[MATRIX_SIZE][MATRIX_SIZE],
-    global const uint256_t target,
-    global ulong2 *random_state,
+    __constant const uint8_t hash_header[HASH_HEADER_SIZE],
+    __constant const uint8_t matrix[MATRIX_SIZE][MATRIX_SIZE],
+    __constant const uint256_t target,
+    global ulong4 *random_state,
     volatile global uint64_t *final_nonce,
     volatile global uint64_t *final_hash
 ) {
+    int nonceId = get_global_id(0);
+
     #ifndef cl_khr_int64_base_atomics
-    if (get_local_id(0) == 0)
+    if (nonceId == 0)
        lock = 0;
     work_group_barrier(CLK_GLOBAL_MEM_FENCE);
     #endif
 
     uint8_t buffer[80];
-    int nonceId = get_global_id(0);
 
-    private uint64_t nonce = MWC128X(random_state + nonceId);
+    private uint64_t nonce = xoshiro256_next(random_state + nonceId);
 
     // header
     for(int i=0; i<HASH_HEADER_SIZE; i++) buffer[i] = hash_header[i];
@@ -231,9 +260,9 @@ kernel void heavy_hash(
     if (LT_U256(((uint64_t *)hash_), target)){
         //printf("%lu: %lu < %lu: %d %d\n", nonce, ((uint64_t *)hash_)[3], target[3], ((uint64_t *)hash_)[3] < target[3], LT_U256((uint64_t *)hash_, target));
         #ifdef cl_khr_int64_base_atomics
-        atomic_cmpxchg(final_nonce, 0, nonce);
+        atom_cmpxchg(final_nonce, 0, nonce);
         #else
-        if (!atomic_cmpxchg(&lock, 0, 1)) {
+        if (!atom_cmpxchg(&lock, 0, 1)) {
             *final_nonce = nonce;
             //for(int i=0;i<4;i++) final_hash[i] = ((uint64_t volatile *)hash_)[i];
         }

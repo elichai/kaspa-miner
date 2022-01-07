@@ -14,6 +14,7 @@ use opencl3::types::{CL_BLOCKING, cl_event, CL_NON_BLOCKING, cl_uchar, cl_ulong}
 use rand::Fill;
 use crate::Error;
 use kaspa_miner::Worker;
+use kaspa_miner::xoshiro256starstar::Xoshiro256StarStar;
 
 static PROGRAM_SOURCE: &str = include_str!("../resources/kaspa-opencl.cl");
 //let cl_uchar_matrix: Arc<[[u8;64];64]> = Arc::new(matrix.0.map(|row| row.map(|v| v as cl_uchar)));
@@ -26,7 +27,7 @@ pub struct OpenCLGPUWorker {
 
     queue: CommandQueue,
 
-    random_state: Buffer<[cl_ulong; 2]>,
+    random_state: Buffer<[cl_ulong; 4]>,
     final_nonce: Buffer<cl_ulong>,
     final_hash: Buffer<[cl_ulong; 4]>,
 
@@ -142,7 +143,7 @@ impl OpenCLGPUWorker {
             0,
         ).expect("CommandQueue::create_with_properties failed");
 
-        let mut random_state = Buffer::<[cl_ulong;2]>::create(context_ref, CL_MEM_READ_WRITE, chosen_workload, ptr::null_mut()).expect("Buffer allocation failed");
+        let mut random_state = Buffer::<[cl_ulong;4]>::create(context_ref, CL_MEM_READ_WRITE, chosen_workload, ptr::null_mut()).expect("Buffer allocation failed");
         let final_nonce = Buffer::<cl_ulong>::create(context_ref, CL_MEM_READ_WRITE, 1, ptr::null_mut()).expect("Buffer allocation failed");
         let final_hash = Buffer::<[cl_ulong; 4]>::create(context_ref, CL_MEM_READ_WRITE, 1, ptr::null_mut()).expect("Buffer allocation failed");
 
@@ -151,12 +152,13 @@ impl OpenCLGPUWorker {
         let target = Buffer::<[cl_ulong; 4]>::create(context_ref, CL_MEM_READ_WRITE, 1, ptr::null_mut()).expect("Buffer allocation failed");
 
         info!("GPU ({}) is generating initial seed. This may take some time.", device.name().unwrap());
-        let mut seeds = vec![1u64; 2 * chosen_workload];
-        seeds.try_fill(&mut rand::thread_rng())?;
+        let mut seed = [1u64; 4];
+        seed.try_fill(&mut rand::thread_rng())?;
+        let rand_state = Xoshiro256StarStar::new(&seed).iter_jump_state().take(chosen_workload).collect::<Vec<[u64;4]>>();
         let mut random_state_local: *mut c_void = 0 as *mut c_void;
 
         queue.enqueue_map_buffer(&mut random_state, CL_BLOCKING, CL_MAP_WRITE, 0, chosen_workload, &mut random_state_local, &[]).map_err(|e| e.to_string())?.wait();
-        unsafe{ random_state_local.copy_from(seeds.as_ptr() as *mut c_void, 2*chosen_workload ); }
+        unsafe{ random_state_local.copy_from(rand_state.as_ptr() as *mut c_void, 4*chosen_workload ); }
         // queue.enqueue_svm_unmap(&random_state,&[]).map_err(|e| e.to_string())?;
         queue.enqueue_unmap_mem_object(random_state.get(), random_state_local, &[]).map_err(|e| e.to_string()).unwrap();
         Ok(
