@@ -9,21 +9,7 @@ A Rust binary for file encryption to multiple participants.
 
 ## Installation
 ### From Sources
-With Rust's package manager cargo, you can install the plugin supported kaspa-miner, with all
-plugins, via:
-
-```sh
-cargo install --git https://github.com/tmrlvi/kaspa-miner.git --all
-```
-
-To install the miner with only a specific plugin, add `-p` and the plugin name. For example, 
-to add CUDA support to the kaspa-miner, run:
-
-```sh
-cargo install --git https://github.com/tmrlvi/kaspa-miner.git -p kaspacuda
-```
-
-Supported plugins are `kaspacuda` for CUDA support and `kaspaopencl` for OpenCL support.
+Install via `cargo install` not supported for latest version.
 
 The regular version is still available at
 ```sh
