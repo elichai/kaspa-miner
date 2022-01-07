@@ -18,20 +18,25 @@ use crate::worker::CudaGPUWorker;
 const DEFAULT_WORKLOAD_SCALE : f32= 16.;
 
 pub struct CudaPlugin {
-    specs: Vec<CudaWorkerSpec>
+    specs: Vec<CudaWorkerSpec>,
+    _enabled: bool
 }
 
 impl CudaPlugin {
     fn new() -> Self {
         cust::init(CudaFlags::empty()).unwrap();
         env_logger::builder().filter_level(LevelFilter::Info).parse_default_env().init();
-        Self{ specs: Vec::new() }
+        Self{ specs: Vec::new(), _enabled: false }
     }
 }
 
 impl Plugin for CudaPlugin {
     fn name(&self) -> &'static str {
         "CUDA Worker"
+    }
+
+    fn enabled(&self) -> bool {
+        self._enabled
     }
 
     fn get_worker_specs(&self) -> Vec<Box<dyn WorkerSpec>> {
@@ -42,7 +47,10 @@ impl Plugin for CudaPlugin {
 
     //noinspection RsTypeCheck
     fn process_option(&mut self, matches: &ArgMatches) -> Result<(), kaspa_miner::Error> {
-        let opts = CudaOpt::from_arg_matches(matches)?;
+        let opts: CudaOpt = CudaOpt::from_arg_matches(matches)?;
+
+        self._enabled = !opts.cuda_disable;
+
         let gpus : Vec<u16> = match &opts.cuda_device {
             Some(devices) => devices.clone(),
             None => {

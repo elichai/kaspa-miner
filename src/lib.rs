@@ -4,6 +4,8 @@ use clap::ArgMatches;
 
 pub mod xoshiro256starstar;
 use libloading::{Library, Symbol};
+use log::error;
+use std::iter;
 
 
 pub type Error = Box<dyn StdError + Send + Sync + 'static>;
@@ -26,15 +28,18 @@ impl PluginManager {
         }
     }
 
-    pub(crate) unsafe fn load_single_plugin<'help>(&mut self, app: clap::App<'help>, path: &str) -> Result<clap::App<'help>,Error> {
+    pub(crate) unsafe fn load_single_plugin<'help>(&mut self, app: clap::App<'help>, path: &str) -> Result<clap::App<'help>,(clap::App<'help>,Error)> {
         type PluginCreate<'help> = unsafe fn(*const clap::App<'help>) -> (*mut clap::App<'help>, *mut dyn Plugin);
 
         let lib = Library::new(path).expect("Unable to load the plugin");
         self.loaded_libraries.push(lib);
         let lib = self.loaded_libraries.last().unwrap();
 
-        let constructor: Symbol<PluginCreate> = lib.get(b"_plugin_create")
-            .expect("The `_plugin_create` symbol wasn't found.");
+        let constructor: Symbol<PluginCreate> = match lib.get(b"_plugin_create") {
+            Ok(cons) => cons,
+            Err(e) => return Err((app, e.to_string().into()))
+        };
+
         let app = Box::into_raw(Box::new(app));
         let (app, boxed_raw) = constructor(app);
 
@@ -46,7 +51,13 @@ impl PluginManager {
     }
 
     pub fn build(&self) -> Result<Vec<Box<dyn WorkerSpec + 'static>>, Error> {
-        Ok(self.plugins.last().unwrap().get_worker_specs())
+        let mut specs = Vec::<Box<dyn WorkerSpec + 'static>>::new();
+        for plugin in &self.plugins {
+            if plugin.enabled() {
+                specs.extend(plugin.get_worker_specs());
+            }
+        }
+        Ok(specs)
     }
 
     pub fn process_options(&mut self, matchs: &ArgMatches) -> Result<(), Error>{
@@ -57,10 +68,15 @@ impl PluginManager {
         });
         Ok(())
     }
+
+    pub fn has_specs(&self) -> bool {
+        self.plugins.len() > 0
+    }
 }
 
 pub trait Plugin: Any + Send + Sync {
     fn name(&self) -> &'static str;
+    fn enabled(&self) -> bool;
     fn get_worker_specs(&self) -> Vec<Box<dyn WorkerSpec>>;
     fn process_option(&mut self, matchs: &ArgMatches) -> Result<(), Error>;
 }
@@ -90,7 +106,11 @@ pub fn load_plugins<'help>(app: clap::App<'help>, paths: &[String]) -> Result<(c
     let mut factory = PluginManager::new();
     let mut app = app;
     for path in paths {
-        app = unsafe { factory.load_single_plugin(app, path.as_str())? };
+        app = unsafe { factory.load_single_plugin(app, path.as_str()).unwrap_or_else(|(app, e)| {
+            eprintln!("Failed loading plugin {}: {}", path, e);
+            app
+        }) };
+
     }
     Ok((app, factory))
 }

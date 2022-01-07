@@ -1,7 +1,6 @@
 use std::borrow::Borrow;
-use std::ffi::{c_void, CString};
-use std::{fs, ptr};
-use std::ops::Deref;
+use std::ffi::c_void;
+use std::ptr;
 use std::sync::Arc;
 use log::info;
 use opencl3::command_queue::{CL_QUEUE_PROFILING_ENABLE, CommandQueue};
@@ -10,20 +9,16 @@ use opencl3::device::{CL_DEVICE_MAX_WORK_ITEM_SIZES, CL_DEVICE_TYPE_GPU, Device,
 use opencl3::event::{Event, release_event, retain_event, wait_for_events};
 use opencl3::kernel::{ExecuteKernel, Kernel};
 use opencl3::memory::{CL_MAP_READ, CL_MAP_WRITE, CL_MEM_READ_WRITE, Buffer, CL_MEM_WRITE_ONLY, ClMem};
-use opencl3::platform::{get_platforms, Platform};
 use opencl3::program::{CL_FAST_RELAXED_MATH, CL_FINITE_MATH_ONLY, CL_MAD_ENABLE, CL_STD_2_0, CL_STD_3_0, DEBUG_OPTION, Program};
-use opencl3::svm::SvmVec;
-use opencl3::types::{CL_BLOCKING, cl_device_id, cl_event, cl_int, cl_long, cl_mem, CL_NON_BLOCKING, cl_uchar, cl_uint, cl_ulong};
+use opencl3::types::{CL_BLOCKING, cl_event, CL_NON_BLOCKING, cl_uchar, cl_ulong};
 use rand::Fill;
 use crate::Error;
-use crate::gpu::GPUWork;
-use crate::pow::State;
-use std::ptr::null;
+use kaspa_miner::Worker;
 
-static PROGRAM_SOURCE: &str = include_str!("../../resources/kaspa-opencl.cl");
+static PROGRAM_SOURCE: &str = include_str!("../resources/kaspa-opencl.cl");
 //let cl_uchar_matrix: Arc<[[u8;64];64]> = Arc::new(matrix.0.map(|row| row.map(|v| v as cl_uchar)));
 
-pub struct OpenCLGPUWork {
+pub struct OpenCLGPUWorker {
     context: Arc<Context>,
     workload: usize,
 
@@ -42,16 +37,18 @@ pub struct OpenCLGPUWork {
     events: Vec<cl_event>,
 }
 
-impl GPUWork for OpenCLGPUWork {
+impl Worker for OpenCLGPUWorker {
     fn id(&self) -> String {
         let device =  Device::new(self.context.default_device());
         format!("{}", device.name().unwrap())
     }
 
-    fn load_block_constants(&mut self, hash_header: &[u8; 72], matrix: &[[cl_uchar; 64]; 64], target: &[u64; 4]) {
+    fn load_block_constants(&mut self, hash_header: &[u8; 72], matrix: &[[u16; 64]; 64], target: &[u64; 4]) {
+        let cl_uchar_matrix: Arc<[[u8;64];64]> = Arc::new(matrix.map(|row| row.map(|v| v as cl_uchar)));
+
         let reset_final_nonce = self.queue.enqueue_write_buffer(&mut self.final_nonce, CL_NON_BLOCKING, 0, &[0], &[]).map_err(|e| e.to_string()).unwrap();
         let copy_header = self.queue.enqueue_write_buffer(&mut self.hash_header, CL_NON_BLOCKING, 0, &[*hash_header], &[]).map_err(|e| e.to_string()).unwrap();
-        let copy_matrix = self.queue.enqueue_write_buffer(&mut self.matrix, CL_NON_BLOCKING, 0, &[*matrix], &[]).map_err(|e| e.to_string()).unwrap();
+        let copy_matrix = self.queue.enqueue_write_buffer(&mut self.matrix, CL_NON_BLOCKING, 0, &[*cl_uchar_matrix], &[]).map_err(|e| e.to_string()).unwrap();
         let copy_target = self.queue.enqueue_write_buffer(&mut self.target, CL_NON_BLOCKING, 0, &[*target], &[]).map_err(|e| e.to_string()).unwrap();
 
         self.events = vec!(reset_final_nonce.get(), copy_header.get(), copy_matrix.get(), copy_target.get());
@@ -105,10 +102,10 @@ impl GPUWork for OpenCLGPUWork {
     }
 }
 
-impl OpenCLGPUWork {
-    pub fn new(device_id: cl_device_id, workload: f32, is_absolute: bool) -> Result<Self,Error> {
+impl OpenCLGPUWorker {
+    pub fn new(device: Device, workload: f32, is_absolute: bool) -> Result<Self,Error> {
         info!("Using OpenCL");
-        let device =  Device::new(device_id);
+        //let device =  Device::new(device_id);
         let version = device.version().expect("Device::could not query device version");
         info!("Found device that supports {} with extensions: {}", version, device.extensions().expect("Device::failed extension query"));
         let chosen_workload:usize;
@@ -125,7 +122,8 @@ impl OpenCLGPUWork {
 
         let v = version.split(" ").nth(1).unwrap();
         let mut compile_options = "".to_string();
-        compile_options += CL_MAD_ENABLE + CL_FINITE_MATH_ONLY;
+        compile_options += CL_MAD_ENABLE;
+        compile_options += CL_FINITE_MATH_ONLY;
         if v == "2.0" || v == "2.1" || v=="3.0" {
             info!("Compiling with OpenCl 2");
             compile_options += CL_STD_2_0;

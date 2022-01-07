@@ -60,4 +60,5 @@ cc = "1"
 sha3 = { git = "https://github.com/elichai/hashes", branch = "cSHAKE" }
 
 [workspace]
-members = ["plugins/cuda"]
+members = ["plugins/*"]
+default-members = ["plugins/cuda"]

@@ -49,7 +49,7 @@ impl MinerManager {
         let hashes_tried = Arc::new(AtomicU64::new(0));
         let (send, recv) = watch::channel(None);
         let mut handles = Self::launch_cpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv.clone(), n_cpus).collect::<Vec<MinerHandler>>();
-        if true {
+        if manager.has_specs() {
             handles.append(&mut Self::launch_gpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv.clone(), manager));
         }
         Self {

@@ -23,15 +23,31 @@ to add CUDA support to the kaspa-miner, run:
 cargo install --git https://github.com/tmrlvi/kaspa-miner.git -p kaspacuda
 ```
 
+Supported plugins are `kaspacuda` for CUDA support and `kaspaopencl` for OpenCL support.
 
 The regular version is still available at
 ```sh
 cargo install kaspa-miner
 ```
 
+### From Git Sources
+
+If you are looking to build from the repository (for debug / extension), note that the plugins are additional
+packages in the workspace. To compile a specific package, run the following command or any subset of it
+
+```sh
+cargo build --release -p kaspa-miner -p kaspacuda -p kaspaopencl
+```
+
+
 ### From Binaries
 The [release page](https://github.com/tmrlvi/kaspa-miner/releases) includes precompiled binaries for Linux, and Windows (for the GPU version).
 
+### Removing Plugins
+To remove a plugin simply remove the corresponding `dll`/`so` for the directory of the miner. 
+
+* `libkaspacuda.so`, `libkaspacuda.dll`: Cuda support for Kaspa-Miner
+* `libkaspaopencl.so`, `libkaspaopencl.dll`: OpenCL support for Kaspa-Miner
 
 # Usage
 To start mining you need to run [kaspad](https://github.com/kaspanet/kaspad) and have an address to send the rewards to.
