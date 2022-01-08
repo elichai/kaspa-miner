@@ -23,10 +23,10 @@ pub struct CudaPlugin {
 }
 
 impl CudaPlugin {
-    fn new() -> Self {
-        cust::init(CudaFlags::empty()).unwrap();
+    fn new() -> Result<Self, Error> {
+        cust::init(CudaFlags::empty())?;
         env_logger::builder().filter_level(LevelFilter::Info).parse_default_env().init();
-        Self{ specs: Vec::new(), _enabled: false }
+        Ok(Self{ specs: Vec::new(), _enabled: false })
     }
 }
 

@@ -25,9 +25,9 @@ pub struct OpenCLPlugin {
 }
 
 impl OpenCLPlugin {
-    fn new() -> Self {
+    fn new() -> Result<Self, Error> {
         env_logger::builder().filter_level(LevelFilter::Info).parse_default_env().init();
-        Self{ specs: Vec::new(), _enabled: false }
+        Ok(Self{ specs: Vec::new(), _enabled: false })
     }
 }
 
@@ -73,9 +73,9 @@ impl Plugin for OpenCLPlugin {
         self.specs = (0..gpus.len()).map(
             |i| OpenCLWorkerSpec{
                 platform,
-                device_id: Device::new(device_ids[i]),
+                device_id: Device::new(gpus[i]),
                 workload: match &opts.opencl_workload {
-                    Some(workload) if workload.len() < i => workload[i],
+                    Some(workload) if i < workload.len() => workload[i],
                     Some(workload) if workload.len() > 0 => *workload.last().unwrap(),
                     _ => DEFAULT_WORKLOAD_SCALE
                 },

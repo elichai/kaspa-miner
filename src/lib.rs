@@ -27,13 +27,14 @@ impl PluginManager {
     }
 
     pub(crate) unsafe fn load_single_plugin<'help>(&mut self, app: clap::App<'help>, path: &str) -> Result<clap::App<'help>,(clap::App<'help>,Error)> {
-        type PluginCreate<'help> = unsafe fn(*const clap::App<'help>) -> (*mut clap::App<'help>, *mut dyn Plugin);
+        type PluginCreate<'help> = unsafe fn(*const clap::App<'help>) -> (*mut clap::App<'help>, *mut dyn Plugin, *mut Error);
 
         let lib = match Library::new(path) {
             Ok(l) => l,
             Err(e) => return Err((app, e.to_string().into()))
         };
-        self.loaded_libraries.push(lib);
+
+        self.loaded_libraries.push(lib); // Save library so it persists in memory
         let lib = self.loaded_libraries.last().unwrap();
 
         let constructor: Symbol<PluginCreate> = match lib.get(b"_plugin_create") {
@@ -41,14 +42,16 @@ impl PluginManager {
             Err(e) => return Err((app, e.to_string().into()))
         };
 
-        let app = Box::into_raw(Box::new(app));
-        let (app, boxed_raw) = constructor(app);
+        let (app, boxed_raw, error) = constructor(Box::into_raw(Box::new(app)));
+        let app = *Box::from_raw(app);
 
+        if boxed_raw.is_null()  {
+            return Err((app, *Box::from_raw(error)))
+        }
         let plugin = Box::from_raw(boxed_raw);
         self.plugins.push(plugin);
 
-        //Ok(Box::from_raw(app))
-        Ok(*Box::from_raw(app))
+        Ok(app)
     }
 
     pub fn build(&self) -> Result<Vec<Box<dyn WorkerSpec + 'static>>, Error> {
@@ -121,15 +124,25 @@ macro_rules! declare_plugin {
     ($plugin_type:ty, $constructor:path, $args:ty) => {
         use clap::Args;
         #[no_mangle]
-        pub extern "C" fn _plugin_create(app: *mut clap::App) -> (*mut clap::App, *mut dyn $crate::Plugin) {
+        pub extern "C" fn _plugin_create(app: *mut clap::App) -> (*mut clap::App, *mut dyn $crate::Plugin, *const $crate::Error) {
             // make sure the constructor is the correct type.
-            let constructor: fn() -> $plugin_type = $constructor;
+            let constructor: fn() -> Result<$plugin_type, $crate::Error> = $constructor;
 
-            let object = constructor();
+            let object = match constructor() {
+                Ok(obj) => obj,
+                Err(e) => {
+                    return (
+                        app,
+                        unsafe { std::mem::MaybeUninit::zeroed().assume_init() }, // Translates to null pointer
+                        Box::into_raw(Box::new(e))
+                    );
+                }
+            };
+
             let boxed: Box<dyn $crate::Plugin> = Box::new(object);
 
             let boxed_app = Box::new(<$args>::augment_args(unsafe{*Box::from_raw(app)}));
-            (Box::into_raw(boxed_app), Box::into_raw(boxed))
+            (Box::into_raw(boxed_app), Box::into_raw(boxed), std::ptr::null::<Error>())
         }
     };
 }

@@ -16,7 +16,8 @@ pub struct OpenCLOpt {
     )]
     pub opencl_workload_absolute: bool,
     #[clap(
-    long = "opencl-enable"
+    long = "opencl-enable",
+    help = "Enable opencl, and take all devices of the chosen platform"
     )]
     pub opencl_enable: bool,
 }

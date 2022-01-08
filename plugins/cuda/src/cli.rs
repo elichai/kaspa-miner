@@ -14,7 +14,8 @@ pub struct CudaOpt {
     )]
     pub cuda_workload_absolute: bool,
     #[clap(
-        long = "cuda-disable"
+        long = "cuda-disable",
+        help = "disable cuda workers"
     )]
     pub cuda_disable: bool,
 }

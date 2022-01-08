@@ -238,6 +238,7 @@ kernel void heavy_hash(
     Hash hash_;
     hash(powP, hash_, 32, buffer, 80, 136, 0x04);
 
+    #if __OPENCL_VERSION__ <= CL_VERSION_1_2
     ushort hash_part[64];
     for (int i=0; i<32; i++) {
          hash_part[2*i] = (hash_[i] & 0xF0) >> 4;
@@ -255,6 +256,51 @@ kernel void heavy_hash(
         product2 >>= 10;
         hash_[rowId] ^= (uint8_t)((product1 << 4) | (uint8_t)(product2));
     }
+    #else
+    uchar16 hash_part[4];
+    for (int i=0; i<4; i++) {
+         hash_part[i] = (uchar16)(
+            (hash_[8*i] & 0xF0) >> 4,
+            (hash_[8*i] & 0x0F),
+            (hash_[8*i+1] & 0xF0) >> 4,
+            (hash_[8*i+1] & 0x0F),
+            (hash_[8*i+2] & 0xF0) >> 4,
+            (hash_[8*i+2] & 0x0F),
+            (hash_[8*i+3] & 0xF0) >> 4,
+            (hash_[8*i+3] & 0x0F),
+            (hash_[8*i+4] & 0xF0) >> 4,
+            (hash_[8*i+4] & 0x0F),
+            (hash_[8*i+5] & 0xF0) >> 4,
+            (hash_[8*i+5] & 0x0F),
+            (hash_[8*i+6] & 0xF0) >> 4,
+            (hash_[8*i+6] & 0x0F),
+            (hash_[8*i+7] & 0xF0) >> 4,
+            (hash_[8*i+7] & 0x0F)
+        );
+    }
+
+    for (int rowId=0; rowId<32; rowId++){
+        ushort16 product1 = 0;
+        ushort16 product2 = 0;
+        for (int i=0; i<4; i++) {
+            product1 += convert_ushort16(vload16(i, matrix[(2*rowId)])*hash_part[i]);
+            product2 += convert_ushort16(vload16(i, matrix[(2*rowId+1)])*hash_part[i]);
+        }
+        product1.s01234567 = product1.s01234567 + product1.s89abcdef;
+        product1.s0123 = product1.s0123 + product1.s4567;
+        product1.s01 = product1.s01 + product1.s23;
+        product1.s0 = product1.s0 + product1.s1;
+
+        product2.s01234567 = product2.s01234567 + product2.s89abcdef;
+        product2.s0123 = product2.s0123 + product2.s4567;
+        product2.s01 = product2.s01 + product2.s23;
+        product2.s0 = product2.s0 + product2.s1;
+
+        product1.s0 >>= 10;
+        product2.s0 >>= 10;
+        hash_[rowId] = hash_[rowId] ^ ((uint8_t)(product1.s0 << 4) | (uint8_t)(product2.s0));
+    }
+    #endif
 
     hash(heavyP, hash_, 32, hash_, 32, 136, 0x04);
     if (LT_U256(((uint64_t *)hash_), target)){
