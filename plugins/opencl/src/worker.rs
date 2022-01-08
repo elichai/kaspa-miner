@@ -106,9 +106,8 @@ impl Worker for OpenCLGPUWorker {
 impl OpenCLGPUWorker {
     pub fn new(device: Device, workload: f32, is_absolute: bool) -> Result<Self,Error> {
         info!("Using OpenCL");
-        //let device =  Device::new(device_id);
         let version = device.version().expect("Device::could not query device version");
-        info!("Found device that supports {} with extensions: {}", version, device.extensions().expect("Device::failed extension query"));
+        info!("Device  {} supports {} with extensions: {}", device.name().unwrap(), version, device.extensions().expect("Device::failed extension query"));
         let chosen_workload:usize;
         if is_absolute {
             chosen_workload = workload as usize
@@ -118,6 +117,7 @@ impl OpenCLGPUWorker {
             ) as f32;
             chosen_workload = (workload * max_work_group_size) as usize;
         }
+        info!("Device {} chosen workload is {}", device.name().unwrap(), chosen_workload);
         let context = Arc::new(Context::from_device(&device).expect("Context::from_device failed"));
         let context_ref = unsafe{Arc::as_ptr(&context).as_ref().unwrap()};
 
@@ -157,8 +157,11 @@ impl OpenCLGPUWorker {
         let rand_state = Xoshiro256StarStar::new(&seed).iter_jump_state().take(chosen_workload).collect::<Vec<[u64;4]>>();
         let mut random_state_local: *mut c_void = 0 as *mut c_void;
 
-        queue.enqueue_map_buffer(&mut random_state, CL_BLOCKING, CL_MAP_WRITE, 0, chosen_workload, &mut random_state_local, &[]).map_err(|e| e.to_string())?.wait();
-        unsafe{ random_state_local.copy_from(rand_state.as_ptr() as *mut c_void, 4*chosen_workload ); }
+        queue.enqueue_map_buffer(&mut random_state, CL_BLOCKING, CL_MAP_WRITE, 0, 32*chosen_workload, &mut random_state_local, &[]).map_err(|e| e.to_string())?.wait();
+        if random_state_local.is_null() {
+            return Err("could not load random state vector to memory. Consider changing random or lowering workload".into());
+        }
+        unsafe{ random_state_local.copy_from(rand_state.as_ptr() as *mut c_void, 32*chosen_workload ); }
         // queue.enqueue_svm_unmap(&random_state,&[]).map_err(|e| e.to_string())?;
         queue.enqueue_unmap_mem_object(random_state.get(), random_state_local, &[]).map_err(|e| e.to_string()).unwrap();
         Ok(
