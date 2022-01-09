@@ -34,7 +34,7 @@ pub struct Opt {
     #[clap(
         short = 't',
         long = "threads",
-        help = "Amount of miner threads to launch [default: number of logical cpus]"
+        help = "Amount of CPU miner threads to launch [default: 0]"
     )]
     pub num_threads: Option<u16>,
     #[clap(
@@ -98,6 +98,10 @@ impl Opt {
             self.kaspad_address = format!("grpc://{}:{}", self.kaspad_address, port);
         }
         log::info!("kaspad address: {}", self.kaspad_address);
+        
+        if self.num_threads.is_none() {
+            self.num_threads = Some(0);
+        }
 
         let miner_network = self.mining_address.split(":").next();
         let devfund_network = self.devfund_address.split(":").next();
