@@ -2,8 +2,8 @@
 
 use std::error::Error as StdError;
 
+use clap::Parser;
 use log::{info, warn};
-use structopt::StructOpt;
 
 use crate::cli::Opt;
 use crate::client::KaspadHandler;
@@ -30,7 +30,7 @@ type Hash = Uint256;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let mut opt: Opt = Opt::from_args();
+    let mut opt: Opt = Opt::parse();
     opt.process()?;
     env_logger::builder().filter_level(opt.log_level()).parse_default_env().init();
 

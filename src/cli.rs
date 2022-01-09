@@ -1,45 +1,42 @@
+use crate::Error;
+use clap::{ArgGroup, Parser};
 use log::LevelFilter;
 use std::{net::IpAddr, str::FromStr};
-use structopt::StructOpt;
 
-use crate::Error;
-
-#[derive(Debug, StructOpt)]
-#[structopt(name = "kaspa-miner", about = "A Kaspa high performance CPU miner")]
+#[derive(Debug, Parser)]
+#[clap(about, version, author)]
+#[clap(group(ArgGroup::new("required")))]
 pub struct Opt {
-    #[structopt(short, long, help = "Enable debug logging level")]
+    #[clap(short, long, display_order = 3)]
+    /// Enable debug logging level
     pub debug: bool,
-    #[structopt(short = "a", long = "mining-address", help = "The Kaspa address for the miner reward")]
+    #[clap(short = 'a', long = "mining-address", display_order = 0)]
+    /// The Kaspa address for the miner reward
     pub mining_address: String,
-    #[structopt(
-        short = "s",
-        long = "kaspad-address",
-        default_value = "127.0.0.1",
-        help = "The IP of the kaspad instance"
-    )]
+    #[clap(short = 's', long = "kaspad-address", default_value = "127.0.0.1", display_order = 1)]
+    /// The IP of the kaspad instance
     pub kaspad_address: String,
 
-    #[structopt(long = "devfund", help = "Mine a percentage of the blocks to the Kaspa devfund [default: Off]")]
+    #[clap(long = "devfund", display_order = 6)]
+    /// Mine a percentage of the blocks to the Kaspa devfund [default: Off]
     pub devfund_address: Option<String>,
 
-    #[structopt(long = "devfund-percent", help = "The percentage of blocks to send to the devfund", default_value = "1", parse(try_from_str = parse_devfund_percent))]
+    #[clap(long = "devfund-percent", default_value = "1", display_order = 7, parse(try_from_str = parse_devfund_percent))]
+    /// The percentage of blocks to send to the devfund
     pub devfund_percent: u16,
 
-    #[structopt(short, long, help = "Kaspad port [default: Mainnet = 16111, Testnet = 16211]")]
+    #[clap(short, long, display_order = 2)]
+    /// Kaspad port [default: Mainnet = 16111, Testnet = 16211]
     port: Option<u16>,
 
-    #[structopt(long, help = "Use testnet instead of mainnet [default: false]")]
+    #[clap(long, display_order = 4)]
+    /// Use testnet instead of mainnet [default: false]
     testnet: bool,
-    #[structopt(
-        short = "t",
-        long = "threads",
-        help = "Amount of miner threads to launch [default: number of logical cpus]"
-    )]
+    #[clap(short = 't', long = "threads", display_order = 5)]
+    /// Amount of miner threads to launch [default: number of logical cpus]
     pub num_threads: Option<u16>,
-    #[structopt(
-        long = "mine-when-not-synced",
-        help = "Mine even when kaspad says it is not synced, only useful when passing `--allow-submit-block-when-not-synced` to kaspad  [default: false]"
-    )]
+    #[clap(long = "mine-when-not-synced", display_order = 8)]
+    /// Mine even when kaspad says it is not synced, only useful when passing `--allow-submit-block-when-not-synced` to kaspad  [default: false]
     pub mine_when_not_synced: bool,
 }
 
