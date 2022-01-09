@@ -8,7 +8,7 @@ use opencl3::context::Context;
 use opencl3::device::{CL_DEVICE_MAX_WORK_ITEM_SIZES, CL_DEVICE_TYPE_GPU, Device, get_device_info, CL_DEVICE_VERSION};
 use opencl3::event::{Event, release_event, retain_event, wait_for_events};
 use opencl3::kernel::{ExecuteKernel, Kernel};
-use opencl3::memory::{CL_MAP_READ, CL_MAP_WRITE, CL_MEM_READ_WRITE, Buffer, CL_MEM_WRITE_ONLY, ClMem};
+use opencl3::memory::{CL_MAP_READ, CL_MAP_WRITE, CL_MEM_READ_WRITE, Buffer, CL_MEM_WRITE_ONLY, ClMem, CL_MEM_READ_ONLY};
 use opencl3::program::{CL_FAST_RELAXED_MATH, CL_FINITE_MATH_ONLY, CL_MAD_ENABLE, CL_STD_2_0, CL_STD_3_0, DEBUG_OPTION, Program};
 use opencl3::types::{CL_BLOCKING, cl_event, CL_NON_BLOCKING, cl_uchar, cl_ulong};
 use rand::Fill;
@@ -31,9 +31,9 @@ pub struct OpenCLGPUWorker {
     final_nonce: Buffer<cl_ulong>,
     final_hash: Buffer<[cl_ulong; 4]>,
 
-    hash_header: Buffer<[cl_uchar; 72]>,
-    matrix: Buffer<[[cl_uchar; 64]; 64]>,
-    target: Buffer<[cl_ulong; 4]>,
+    hash_header: Buffer<cl_uchar>,
+    matrix: Buffer<cl_uchar>,
+    target: Buffer<cl_ulong>,
 
     events: Vec<cl_event>,
 }
@@ -45,14 +45,14 @@ impl Worker for OpenCLGPUWorker {
     }
 
     fn load_block_constants(&mut self, hash_header: &[u8; 72], matrix: &[[u16; 64]; 64], target: &[u64; 4]) {
-        let cl_uchar_matrix: Arc<[[u8;64];64]> = Arc::new(matrix.map(|row| row.map(|v| v as cl_uchar)));
+        let cl_uchar_matrix = matrix.iter().flat_map(|row| row.map(|v| v as cl_uchar)).collect::<Vec<cl_uchar>>();
 
-        let reset_final_nonce = self.queue.enqueue_write_buffer(&mut self.final_nonce, CL_NON_BLOCKING, 0, &[0], &[]).map_err(|e| e.to_string()).unwrap();
-        let copy_header = self.queue.enqueue_write_buffer(&mut self.hash_header, CL_NON_BLOCKING, 0, &[*hash_header], &[]).map_err(|e| e.to_string()).unwrap();
-        let copy_matrix = self.queue.enqueue_write_buffer(&mut self.matrix, CL_NON_BLOCKING, 0, &[*cl_uchar_matrix], &[]).map_err(|e| e.to_string()).unwrap();
-        let copy_target = self.queue.enqueue_write_buffer(&mut self.target, CL_NON_BLOCKING, 0, &[*target], &[]).map_err(|e| e.to_string()).unwrap();
+        let reset_final_nonce = self.queue.enqueue_write_buffer(&mut self.final_nonce, CL_BLOCKING, 0, &[0], &[]).map_err(|e| e.to_string()).unwrap().wait();
+        let copy_header = self.queue.enqueue_write_buffer(&mut self.hash_header, CL_BLOCKING, 0, hash_header, &[]).map_err(|e| e.to_string()).unwrap().wait();
+        let copy_matrix = self.queue.enqueue_write_buffer(&mut self.matrix, CL_BLOCKING, 0, cl_uchar_matrix.as_slice(), &[]).map_err(|e| e.to_string()).unwrap().wait();
+        let copy_target = self.queue.enqueue_write_buffer(&mut self.target, CL_BLOCKING, 0, target, &[]).map_err(|e| e.to_string()).unwrap();
 
-        self.events = vec!(reset_final_nonce.get(), copy_header.get(), copy_matrix.get(), copy_target.get());
+        self.events = vec!(copy_target.get());
         for event in &self.events{
             retain_event(*event).unwrap();
         }
@@ -145,11 +145,11 @@ impl OpenCLGPUWorker {
 
         let mut random_state = Buffer::<[cl_ulong;4]>::create(context_ref, CL_MEM_READ_WRITE, chosen_workload, ptr::null_mut()).expect("Buffer allocation failed");
         let final_nonce = Buffer::<cl_ulong>::create(context_ref, CL_MEM_READ_WRITE, 1, ptr::null_mut()).expect("Buffer allocation failed");
-        let final_hash = Buffer::<[cl_ulong; 4]>::create(context_ref, CL_MEM_READ_WRITE, 1, ptr::null_mut()).expect("Buffer allocation failed");
+        let final_hash = Buffer::<[cl_ulong; 4]>::create(context_ref, CL_MEM_WRITE_ONLY, 1, ptr::null_mut()).expect("Buffer allocation failed");
 
-        let hash_header = Buffer::<[cl_uchar; 72]>::create(context_ref, CL_MEM_READ_WRITE, 1, ptr::null_mut()).expect("Buffer allocation failed");
-        let matrix = Buffer::<[[cl_uchar; 64]; 64]>::create(context_ref, CL_MEM_READ_WRITE, 1, ptr::null_mut()).expect("Buffer allocation failed");
-        let target = Buffer::<[cl_ulong; 4]>::create(context_ref, CL_MEM_READ_WRITE, 1, ptr::null_mut()).expect("Buffer allocation failed");
+        let hash_header = Buffer::<cl_uchar>::create(context_ref, CL_MEM_READ_ONLY, 72, ptr::null_mut()).expect("Buffer allocation failed");
+        let matrix = Buffer::<cl_uchar>::create(context_ref, CL_MEM_READ_ONLY, 64*64, ptr::null_mut()).expect("Buffer allocation failed");
+        let target = Buffer::<cl_ulong>::create(context_ref, CL_MEM_READ_ONLY, 4, ptr::null_mut()).expect("Buffer allocation failed");
 
         info!("GPU ({}) is generating initial seed. This may take some time.", device.name().unwrap());
         let mut seed = [1u64; 4];
@@ -163,7 +163,7 @@ impl OpenCLGPUWorker {
         }
         unsafe{ random_state_local.copy_from(rand_state.as_ptr() as *mut c_void, 32*chosen_workload ); }
         // queue.enqueue_svm_unmap(&random_state,&[]).map_err(|e| e.to_string())?;
-        queue.enqueue_unmap_mem_object(random_state.get(), random_state_local, &[]).map_err(|e| e.to_string()).unwrap();
+        queue.enqueue_unmap_mem_object(random_state.get(), random_state_local, &[]).map_err(|e| e.to_string()).unwrap().wait();
         Ok(
             Self{
                 context: context.clone(), workload: chosen_workload,
