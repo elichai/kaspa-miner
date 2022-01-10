@@ -132,7 +132,12 @@ impl OpenCLGPUWorker {
         }
 
         compile_options += &match Platform::new(device.platform().unwrap()).name() {
-            Ok(name) => format!("-D __PLATFORM__={} ", name.replace(" ", "_")),
+            Ok(name) => format!("-D __PLATFORM__={} ", name.chars().map(|c|
+                match c.is_ascii_alphanumeric() {
+                    true => c,
+                    false => '_'
+                }
+            ).collect::<String>()),
             Err(_) => String::new()
         };
         compile_options += &match device.compute_capability_major_nv() {
