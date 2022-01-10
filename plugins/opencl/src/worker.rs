@@ -9,6 +9,7 @@ use opencl3::device::{CL_DEVICE_MAX_WORK_ITEM_SIZES, CL_DEVICE_TYPE_GPU, Device,
 use opencl3::event::{Event, release_event, retain_event, wait_for_events};
 use opencl3::kernel::{ExecuteKernel, Kernel};
 use opencl3::memory::{CL_MAP_READ, CL_MAP_WRITE, CL_MEM_READ_WRITE, Buffer, CL_MEM_WRITE_ONLY, ClMem, CL_MEM_READ_ONLY};
+use opencl3::platform::Platform;
 use opencl3::program::{CL_FAST_RELAXED_MATH, CL_FINITE_MATH_ONLY, CL_MAD_ENABLE, CL_STD_2_0, CL_STD_3_0, DEBUG_OPTION, Program};
 use opencl3::types::{CL_BLOCKING, cl_event, CL_NON_BLOCKING, cl_uchar, cl_ulong};
 use rand::Fill;
@@ -104,7 +105,7 @@ impl Worker for OpenCLGPUWorker {
 }
 
 impl OpenCLGPUWorker {
-    pub fn new(device: Device, workload: f32, is_absolute: bool) -> Result<Self,Error> {
+    pub fn new(device: Device, workload: f32, is_absolute: bool, experimental_amd: bool) -> Result<Self,Error> {
         info!("Using OpenCL");
         let version = device.version().expect("Device::could not query device version");
         info!("Device  {} supports {} with extensions: {}", device.name().unwrap(), version, device.extensions().expect("Device::failed extension query"));
@@ -129,6 +130,25 @@ impl OpenCLGPUWorker {
             info!("Compiling with OpenCl 2");
             compile_options += CL_STD_2_0;
         }
+
+        compile_options += &match Platform::new(device.platform().unwrap()).name() {
+            Ok(name) => format!("-D __PLATFORM__={} ", name.replace(" ", "_")),
+            Err(_) => String::new()
+        };
+        compile_options += &match device.compute_capability_major_nv() {
+            Ok(major) => format!("-D __COMPUTE_MAJOR__={} ", major),
+            Err(_) => String::new()
+        };
+        compile_options += &match device.compute_capability_minor_nv() {
+            Ok(minor) => format!("-D __COMPUTE_MINOR__={} ", minor),
+            Err(_) => String::new()
+        };
+
+        if experimental_amd {
+            compile_options += "-D __FORCE_AMD_V_DOT4_U32_U8__=1";
+        }
+        info!("Build OpenCL with {}", compile_options);
+
         //let source = fs::read_to_string("kaspa-opencl.cl")?;
         //let PROGRAM_SOURCE1 = source.as_str();
         let program = Program::create_and_build_from_source(&context, PROGRAM_SOURCE, compile_options.as_str())
@@ -145,7 +165,7 @@ impl OpenCLGPUWorker {
 
         let mut random_state = Buffer::<[cl_ulong;4]>::create(context_ref, CL_MEM_READ_WRITE, chosen_workload, ptr::null_mut()).expect("Buffer allocation failed");
         let final_nonce = Buffer::<cl_ulong>::create(context_ref, CL_MEM_READ_WRITE, 1, ptr::null_mut()).expect("Buffer allocation failed");
-        let final_hash = Buffer::<[cl_ulong; 4]>::create(context_ref, CL_MEM_WRITE_ONLY, 1, ptr::null_mut()).expect("Buffer allocation failed");
+            let final_hash = Buffer::<[cl_ulong; 4]>::create(context_ref, CL_MEM_WRITE_ONLY, 1, ptr::null_mut()).expect("Buffer allocation failed");
 
         let hash_header = Buffer::<cl_uchar>::create(context_ref, CL_MEM_READ_ONLY, 72, ptr::null_mut()).expect("Buffer allocation failed");
         let matrix = Buffer::<cl_uchar>::create(context_ref, CL_MEM_READ_ONLY, 64*64, ptr::null_mut()).expect("Buffer allocation failed");

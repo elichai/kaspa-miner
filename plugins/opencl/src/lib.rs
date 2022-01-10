@@ -79,7 +79,8 @@ impl Plugin for OpenCLPlugin {
                     Some(workload) if workload.len() > 0 => *workload.last().unwrap(),
                     _ => DEFAULT_WORKLOAD_SCALE
                 },
-                is_absolute: opts.opencl_workload_absolute
+                is_absolute: opts.opencl_workload_absolute,
+                experimental_amd: opts.experimental_amd
             }
         ).collect();
 
@@ -93,12 +94,13 @@ struct OpenCLWorkerSpec {
     platform: Platform,
     device_id: Device,
     workload: f32,
-    is_absolute: bool
+    is_absolute: bool,
+    experimental_amd: bool
 }
 
 impl WorkerSpec for OpenCLWorkerSpec {
     fn build(&self) -> Box<dyn Worker> {
-        Box::new(OpenCLGPUWorker::new(self.device_id, self.workload, self.is_absolute).unwrap())
+        Box::new(OpenCLGPUWorker::new(self.device_id, self.workload, self.is_absolute, self.experimental_amd).unwrap())
     }
 }
 

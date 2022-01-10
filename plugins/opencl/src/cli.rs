@@ -20,4 +20,9 @@ pub struct OpenCLOpt {
     help = "Enable opencl, and take all devices of the chosen platform"
     )]
     pub opencl_enable: bool,
+    #[clap(
+    long = "experimental-amd",
+    help = "Uses SMID instructions in AMD. Miner will crash if instruction is not supported"
+    )]
+    pub experimental_amd: bool,
 }

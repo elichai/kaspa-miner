@@ -185,6 +185,26 @@ typedef uint64_t uint256_t[4];
 global int lock = false;
 #endif
 
+uint32_t STATIC inline amul4bit(constant char4 packed_vec1[32], char4 packed_vec2[32]) {
+    // We assume each 32 bits have four values: A0 B0 C0 D0
+    unsigned int res = 0;
+    #pragma unroll
+    for (int i=0; i<QUARTER_MATRIX_SIZE; i++) {
+        #if __PLATFORM__ == NVIDIA_CUDA && (__COMPUTE_MAJOR__ > 6 || (__COMPUTE_MAJOR__ == 6 && __COMPUTE_MINOR__ >= 1))
+        asm("dp4a.u32.u32" " %0, %1, %2, %3;": "=r" (res): "r" (packed_vec1[i]), "r" (packed_vec2[i]), "r" (res));
+        #elif __FORCE_AMD_V_DOT4_U32_U8__ == 1
+        asm("v_dot4_u32_u8" "%0, %1, %2, %3;": "=r" (res): "r" (packed_vec1[i]), "r" (packed_vec2[i]), "r" (res));
+        #else
+        res += packed_vec1[i].x*packed_vec2[i].x;
+        res += packed_vec1[i].y*packed_vec2[i].y;
+        res += packed_vec1[i].z*packed_vec2[i].z;
+        res += packed_vec1[i].w*packed_vec2[i].w;
+        #endif
+    }
+
+    return res;
+}
+
 kernel void heavy_hash(
     __constant const uint8_t hash_header[HASH_HEADER_SIZE],
     __constant const uint8_t matrix[MATRIX_SIZE][MATRIX_SIZE],
@@ -213,20 +233,16 @@ kernel void heavy_hash(
     Hash hash_;
     hash(0, hash_, (uint8_t *) buffer);
 
-    ushort hash_part[64];
+    uchar hash_part[64];
     for (int i=0; i<32; i++) {
          hash_part[2*i] = (hash_[i] & 0xF0) >> 4;
          hash_part[2*i+1] = hash_[i] & 0x0F;
     }
 
     for (int rowId=0; rowId<32; rowId++){
-        ushort product1 = 0;
-        ushort product2 = 0;
-        #pragma unroll
-        for (int i=0; i<64; i++) {
-            product1 += (ushort)(matrix[(2*rowId)][i])*hash_part[i];
-            product2 += (ushort)(matrix[(2*rowId+1)][i])*hash_part[i];
-        }
+        uint32_t product1 = amul4bit((constant uint32_t *)matrix[(2*rowId)], (uint32_t *)hash_part);
+        uint32_t product2 = amul4bit((constant uint32_t *)matrix[(2*rowId+1)], (uint32_t *)hash_part);
+
         product1 >>= 10;
         product2 >>= 10;
         hash_[rowId] ^= (uint8_t)((product1 << 4) | (uint8_t)(product2));
