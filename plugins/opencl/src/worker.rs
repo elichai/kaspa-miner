@@ -144,6 +144,16 @@ impl OpenCLGPUWorker {
             Err(_) => String::new()
         };
 
+        compile_options += &match device.gfxip_major_amd() {
+            Ok(major) => format!("-D __GFXIP_MAJOR__={} ", major),
+            Err(_) => String::new()
+        };
+
+        compile_options += &match device.gfxip_minor_amd() {
+            Ok(minor) => format!("-D __GFXIP_MINOR__={} ", minor),
+            Err(_) => String::new()
+        };
+
         if experimental_amd {
             compile_options += "-D __FORCE_AMD_V_DOT4_U32_U8__=1";
         }
