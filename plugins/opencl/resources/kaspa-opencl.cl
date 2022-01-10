@@ -233,15 +233,15 @@ kernel void heavy_hash(
     Hash hash_;
     hash(0, hash_, (uint8_t *) buffer);
 
-    uchar hash_part[64];
+    private uchar hash_part[64];
     for (int i=0; i<32; i++) {
          hash_part[2*i] = (hash_[i] & 0xF0) >> 4;
          hash_part[2*i+1] = hash_[i] & 0x0F;
     }
 
     for (int rowId=0; rowId<32; rowId++){
-        uint32_t product1 = amul4bit((constant uint32_t *)matrix[(2*rowId)], (uint32_t *)hash_part);
-        uint32_t product2 = amul4bit((constant uint32_t *)matrix[(2*rowId+1)], (uint32_t *)hash_part);
+        uint32_t product1 = amul4bit((constant char4 *)matrix[(2*rowId)], (private char4 *)hash_part);
+        uint32_t product2 = amul4bit((constant char4 *)matrix[(2*rowId+1)], (private char4 *)hash_part);
 
         product1 >>= 10;
         product2 >>= 10;
