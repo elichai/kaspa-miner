@@ -130,7 +130,9 @@ impl OpenCLGPUWorker {
         let context_ref = unsafe{Arc::as_ptr(&context).as_ref().unwrap()};
 
         let program = match experimental_amd {
-            true => match device.name().unwrap_or("Unknown".into()).as_str() {
+            true => match device.name().unwrap_or("Unknown".into()).to_lowercase().as_str() {
+                "tahiti" => Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/tahiti_kaspa-opencl.bin")], "").map_err(|e| e.to_string()),
+                "ellesmere" => Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/ellesmere_kaspa-opencl.bin")], "").map_err(|e| e.to_string()),
                 "gfx906" => Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/gfx906_kaspa-opencl.bin")], "").map_err(|e| e.to_string()),
                 "gfx908" => Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/gfx908_kaspa-opencl.bin")], "").map_err(|e| e.to_string()),
                 "gfx1011" =>  Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/gfx1011_kaspa-opencl.bin")], "").map_err(|e| e.to_string()),
