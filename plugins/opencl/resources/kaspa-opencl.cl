@@ -209,17 +209,10 @@ STATIC inline void heavy_hash(
     __constant const uint8_t hash_header[HASH_HEADER_SIZE],
     __constant const uint8_t matrix[MATRIX_SIZE][MATRIX_SIZE],
     __constant const uint256_t target,
-    private uint64_t nonce,
+    private const uint64_t nonce,
     volatile global uint64_t *final_nonce,
     volatile global uint64_t *final_hash
 ) {
-    int nonceId = get_global_id(0);
-
-    #ifndef cl_khr_int64_base_atomics
-    if (nonceId == 0)
-       lock = 0;
-    work_group_barrier(CLK_GLOBAL_MEM_FENCE);
-    #endif
 
     int64_t buffer[10];
 
@@ -274,6 +267,13 @@ kernel void heavy_hash_xoshiro(
      volatile global uint64_t *final_hash
  ) {
     int nonceId = get_global_id(0);
+
+    #ifndef cl_khr_int64_base_atomics
+    if (nonceId == 0)
+       lock = 0;
+    work_group_barrier(CLK_GLOBAL_MEM_FENCE);
+    #endif
+
     private uint64_t nonce = xoshiro256_next(random_state + nonceId);
 
     heavy_hash(hash_header, matrix, target, nonce, final_nonce, final_hash);
@@ -288,6 +288,13 @@ kernel void heavy_hash_xoshiro(
       volatile global uint64_t *final_hash
   ) {
      int nonceId = get_global_id(0);
+
+     #ifndef cl_khr_int64_base_atomics
+     if (nonceId == 0)
+        lock = 0;
+     work_group_barrier(CLK_GLOBAL_MEM_FENCE);
+     #endif
+
      private uint64_t nonce = seed + nonceId;
 
      heavy_hash(hash_header, matrix, target, nonce, final_nonce, final_hash);
