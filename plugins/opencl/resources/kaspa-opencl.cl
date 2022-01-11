@@ -185,31 +185,31 @@ typedef uint64_t uint256_t[4];
 global int lock = false;
 #endif
 
-uint32_t STATIC inline amul4bit(constant char4 packed_vec1[32], char4 packed_vec2[32]) {
+uint32_t STATIC inline amul4bit(constant uint32_t packed_vec1[32], uint32_t packed_vec2[32]) {
     // We assume each 32 bits have four values: A0 B0 C0 D0
-    unsigned int res = 0;
+    uint32_t res = 0;
     #pragma unroll
     for (int i=0; i<QUARTER_MATRIX_SIZE; i++) {
         #if __PLATFORM__ == NVIDIA_CUDA && (__COMPUTE_MAJOR__ > 6 || (__COMPUTE_MAJOR__ == 6 && __COMPUTE_MINOR__ >= 1))
         asm("dp4a.u32.u32" " %0, %1, %2, %3;": "=r" (res): "r" (packed_vec1[i]), "r" (packed_vec2[i]), "r" (res));
         #elif __FORCE_AMD_V_DOT4_U32_U8__ == 1
-        asm("v_dot4_u32_u8" "%0, %1, %2, %3;": "=r" (res): "r" (packed_vec1[i]), "r" (packed_vec2[i]), "r" (res));
+        __asm__("v_dot4_u32_u8" " %0, %1, %2, %3;": "=v" (res): "r" (packed_vec1[i]), "r" (packed_vec2[i]), "r" (res));
         #else
-        res += packed_vec1[i].x*packed_vec2[i].x;
-        res += packed_vec1[i].y*packed_vec2[i].y;
-        res += packed_vec1[i].z*packed_vec2[i].z;
-        res += packed_vec1[i].w*packed_vec2[i].w;
+        res += ((constant char4 *)packed_vec1)[i].x*((char4 *)packed_vec2)[i].x;
+        res += ((constant char4 *)packed_vec1)[i].y*((char4 *)packed_vec2)[i].y;
+        res += ((constant char4 *)packed_vec1)[i].z*((char4 *)packed_vec2)[i].z;
+        res += ((constant char4 *)packed_vec1)[i].w*((char4 *)packed_vec2)[i].w;
         #endif
     }
 
     return res;
 }
 
-kernel void heavy_hash(
+STATIC inline void heavy_hash(
     __constant const uint8_t hash_header[HASH_HEADER_SIZE],
     __constant const uint8_t matrix[MATRIX_SIZE][MATRIX_SIZE],
     __constant const uint256_t target,
-    global ulong4 *random_state,
+    private uint64_t nonce,
     volatile global uint64_t *final_nonce,
     volatile global uint64_t *final_hash
 ) {
@@ -222,8 +222,6 @@ kernel void heavy_hash(
     #endif
 
     int64_t buffer[10];
-
-    private uint64_t nonce = xoshiro256_next(random_state + nonceId);
 
     // header
     for(int i=0; i<9; i++) buffer[i] = ((__constant const int64_t *)hash_header)[i];
@@ -267,3 +265,30 @@ kernel void heavy_hash(
     }*/
 }
 
+kernel void heavy_hash_xoshiro(
+     __constant const uint8_t hash_header[HASH_HEADER_SIZE],
+     __constant const uint8_t matrix[MATRIX_SIZE][MATRIX_SIZE],
+     __constant const uint256_t target,
+     global ulong4 *random_state,
+     volatile global uint64_t *final_nonce,
+     volatile global uint64_t *final_hash
+ ) {
+    int nonceId = get_global_id(0);
+    private uint64_t nonce = xoshiro256_next(random_state + nonceId);
+
+    heavy_hash(hash_header, matrix, target, nonce, final_nonce, final_hash);
+ }
+
+ kernel void heavy_hash_lean(
+      __constant const uint8_t hash_header[HASH_HEADER_SIZE],
+      __constant const uint8_t matrix[MATRIX_SIZE][MATRIX_SIZE],
+      __constant const uint256_t target,
+      uint64_t seed,
+      volatile global uint64_t *final_nonce,
+      volatile global uint64_t *final_hash
+  ) {
+     int nonceId = get_global_id(0);
+     private uint64_t nonce = seed + nonceId;
+
+     heavy_hash(hash_header, matrix, target, nonce, final_nonce, final_hash);
+  }

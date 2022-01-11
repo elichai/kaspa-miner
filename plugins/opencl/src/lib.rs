@@ -14,10 +14,10 @@ pub type Error = Box<dyn StdError + Send + Sync + 'static>;
 mod cli;
 mod worker;
 
-use crate::cli::OpenCLOpt;
+use crate::cli::{NonceGenEnum, OpenCLOpt};
 use crate::worker::OpenCLGPUWorker;
 
-const DEFAULT_WORKLOAD_SCALE : f32= 16.;
+const DEFAULT_WORKLOAD_SCALE : f32= 512.;
 
 pub struct OpenCLPlugin {
     specs: Vec<OpenCLWorkerSpec>,
@@ -80,7 +80,8 @@ impl Plugin for OpenCLPlugin {
                     _ => DEFAULT_WORKLOAD_SCALE
                 },
                 is_absolute: opts.opencl_workload_absolute,
-                experimental_amd: opts.experimental_amd
+                experimental_amd: opts.experimental_amd,
+                random: opts.nonce_gen
             }
         ).collect();
 
@@ -95,12 +96,13 @@ struct OpenCLWorkerSpec {
     device_id: Device,
     workload: f32,
     is_absolute: bool,
-    experimental_amd: bool
+    experimental_amd: bool,
+    random: NonceGenEnum,
 }
 
 impl WorkerSpec for OpenCLWorkerSpec {
     fn build(&self) -> Box<dyn Worker> {
-        Box::new(OpenCLGPUWorker::new(self.device_id, self.workload, self.is_absolute, self.experimental_amd).unwrap())
+        Box::new(OpenCLGPUWorker::new(self.device_id, self.workload, self.is_absolute, self.experimental_amd, &self.random).unwrap())
     }
 }
 

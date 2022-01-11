@@ -12,23 +12,25 @@ use opencl3::memory::{CL_MAP_READ, CL_MAP_WRITE, CL_MEM_READ_WRITE, Buffer, CL_M
 use opencl3::platform::Platform;
 use opencl3::program::{CL_FAST_RELAXED_MATH, CL_FINITE_MATH_ONLY, CL_MAD_ENABLE, CL_STD_2_0, CL_STD_3_0, DEBUG_OPTION, Program};
 use opencl3::types::{CL_BLOCKING, cl_event, CL_NON_BLOCKING, cl_uchar, cl_ulong};
-use rand::Fill;
-use crate::Error;
+use rand::{Fill, RngCore, thread_rng};
+use crate::{Error, OpenCLOpt};
 use kaspa_miner::Worker;
 use kaspa_miner::xoshiro256starstar::Xoshiro256StarStar;
+use crate::cli::NonceGenEnum;
 
 static PROGRAM_SOURCE: &str = include_str!("../resources/kaspa-opencl.cl");
 //let cl_uchar_matrix: Arc<[[u8;64];64]> = Arc::new(matrix.0.map(|row| row.map(|v| v as cl_uchar)));
 
 pub struct OpenCLGPUWorker {
     context: Arc<Context>,
+    random: NonceGenEnum,
     workload: usize,
 
     heavy_hash: Kernel,
 
     queue: CommandQueue,
 
-    random_state: Buffer<[cl_ulong; 4]>,
+    random_state: Buffer<cl_ulong>,
     final_nonce: Buffer<cl_ulong>,
     final_hash: Buffer<[cl_ulong; 4]>,
 
@@ -60,6 +62,9 @@ impl Worker for OpenCLGPUWorker {
     }
 
     fn calculate_hash(&mut self, _nonces: Option<&Vec<u64>>) {
+        if self.random == NonceGenEnum::Lean {
+            self.queue.enqueue_write_buffer(&mut self.random_state, CL_BLOCKING, 0, &[thread_rng().next_u64()], &[]).map_err(|e| e.to_string()).unwrap().wait();
+        }
         let kernel_event = ExecuteKernel::new(&self.heavy_hash)
             .set_arg(&self.hash_header)
             .set_arg(&self.matrix)
@@ -105,10 +110,12 @@ impl Worker for OpenCLGPUWorker {
 }
 
 impl OpenCLGPUWorker {
-    pub fn new(device: Device, workload: f32, is_absolute: bool, experimental_amd: bool) -> Result<Self,Error> {
-        info!("Using OpenCL");
-        let version = device.version().expect("Device::could not query device version");
-        info!("Device  {} supports {} with extensions: {}", device.name().unwrap(), version, device.extensions().expect("Device::failed extension query"));
+    pub fn new(device: Device, workload: f32, is_absolute: bool, experimental_amd: bool, random: &NonceGenEnum) -> Result<Self,Error> {
+        let name = device.board_name_amd().unwrap_or(device.name().unwrap_or("Unknown Device".into()));
+        info!("{}: Using OpenCL", name);
+        let version = device.version().unwrap_or("unkown version".into());
+        info!("{}: Device supports {} with extensions: {}", name, version, device.extensions().unwrap_or("NA".into()));
+
         let chosen_workload:usize;
         if is_absolute {
             chosen_workload = workload as usize
@@ -118,94 +125,123 @@ impl OpenCLGPUWorker {
             ) as f32;
             chosen_workload = (workload * max_work_group_size) as usize;
         }
-        info!("Device {} chosen workload is {}", device.name().unwrap(), chosen_workload);
-        let context = Arc::new(Context::from_device(&device).expect("Context::from_device failed"));
+        info!("{}: Chosen workload is {}", name, chosen_workload);
+        let context = Arc::new(Context::from_device(&device).expect(format!("{}::Context::from_device failed", name).as_str()));
         let context_ref = unsafe{Arc::as_ptr(&context).as_ref().unwrap()};
 
-        let v = version.split(" ").nth(1).unwrap();
-        let mut compile_options = "".to_string();
-        compile_options += CL_MAD_ENABLE;
-        compile_options += CL_FINITE_MATH_ONLY;
-        if v == "2.0" || v == "2.1" || v=="3.0" {
-            info!("Compiling with OpenCl 2");
-            compile_options += CL_STD_2_0;
-        }
-
-        compile_options += &match Platform::new(device.platform().unwrap()).name() {
-            Ok(name) => format!("-D __PLATFORM__={} ", name.chars().map(|c|
-                match c.is_ascii_alphanumeric() {
-                    true => c,
-                    false => '_'
+        let program = match experimental_amd {
+            true => match device.name().unwrap_or("Unknown".into()).as_str() {
+                "gfx906" => Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/gfx906_kaspa-opencl.bin")], "").map_err(|e| e.to_string()),
+                "gfx908" => Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/gfx908_kaspa-opencl.bin")], "").map_err(|e| e.to_string()),
+                "gfx1011" =>  Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/gfx1011_kaspa-opencl.bin")], "").map_err(|e| e.to_string()),
+                "gfx1012" =>  Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/gfx1012_kaspa-opencl.bin")], "").map_err(|e| e.to_string()),
+                "gfx1030" =>  Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/gfx1030_kaspa-opencl.bin")], "").map_err(|e| e.to_string()),
+                "gfx1031" =>  Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/gfx1031_kaspa-opencl.bin")], "").map_err(|e| e.to_string()),
+                "gfx1032" =>  Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/gfx1032_kaspa-opencl.bin")], "").map_err(|e| e.to_string()),
+                other => {
+                    info!("{}: Found device {} without prebuilt binary. Trying to building from source.", name, other);
+                    from_source(&context, &device, "-D __FORCE_AMD_V_DOT4_U32_U8__=1 ")
                 }
-            ).collect::<String>()),
-            Err(_) => String::new()
-        };
-        compile_options += &match device.compute_capability_major_nv() {
-            Ok(major) => format!("-D __COMPUTE_MAJOR__={} ", major),
-            Err(_) => String::new()
-        };
-        compile_options += &match device.compute_capability_minor_nv() {
-            Ok(minor) => format!("-D __COMPUTE_MINOR__={} ", minor),
-            Err(_) => String::new()
-        };
+            },
+            false => from_source(&context, &device, "")
+        }.expect(format!("{}::Program::create_and_build_from_source failed", name).as_str());
 
-        compile_options += &match device.gfxip_major_amd() {
-            Ok(major) => format!("-D __GFXIP_MAJOR__={} ", major),
-            Err(_) => String::new()
+        let heavy_hash = match random {
+            NonceGenEnum::Lean => Kernel::create(&program, "heavy_hash_lean").expect(format!("{}::Kernel::create failed", name).as_str()),
+            NonceGenEnum::Xoshiro => Kernel::create(&program, "heavy_hash_xoshiro").expect(format!("{}::Kernel::create failed", name).as_str())
         };
-
-        compile_options += &match device.gfxip_minor_amd() {
-            Ok(minor) => format!("-D __GFXIP_MINOR__={} ", minor),
-            Err(_) => String::new()
-        };
-
-        if experimental_amd {
-            compile_options += "-D __FORCE_AMD_V_DOT4_U32_U8__=1";
-        }
-        info!("Build OpenCL with {}", compile_options);
-
-        //let source = fs::read_to_string("kaspa-opencl.cl")?;
-        //let PROGRAM_SOURCE1 = source.as_str();
-        let program = Program::create_and_build_from_source(&context, PROGRAM_SOURCE, compile_options.as_str())
-            .expect("Program::create_and_build_from_source failed");
-
-        let heavy_hash = Kernel::create(&program, "heavy_hash").expect("Kernel::create failed");
 
         let queue = CommandQueue::create_with_properties(
             &context,
             context.default_device(),
             CL_QUEUE_PROFILING_ENABLE,
             0,
-        ).expect("CommandQueue::create_with_properties failed");
+        ).expect(format!("{}::CommandQueue::create_with_properties failed", name).as_str());
 
-        let mut random_state = Buffer::<[cl_ulong;4]>::create(context_ref, CL_MEM_READ_WRITE, chosen_workload, ptr::null_mut()).expect("Buffer allocation failed");
         let final_nonce = Buffer::<cl_ulong>::create(context_ref, CL_MEM_READ_WRITE, 1, ptr::null_mut()).expect("Buffer allocation failed");
-            let final_hash = Buffer::<[cl_ulong; 4]>::create(context_ref, CL_MEM_WRITE_ONLY, 1, ptr::null_mut()).expect("Buffer allocation failed");
+        let final_hash = Buffer::<[cl_ulong; 4]>::create(context_ref, CL_MEM_WRITE_ONLY, 1, ptr::null_mut()).expect("Buffer allocation failed");
 
         let hash_header = Buffer::<cl_uchar>::create(context_ref, CL_MEM_READ_ONLY, 72, ptr::null_mut()).expect("Buffer allocation failed");
         let matrix = Buffer::<cl_uchar>::create(context_ref, CL_MEM_READ_ONLY, 64*64, ptr::null_mut()).expect("Buffer allocation failed");
         let target = Buffer::<cl_ulong>::create(context_ref, CL_MEM_READ_ONLY, 4, ptr::null_mut()).expect("Buffer allocation failed");
 
-        info!("GPU ({}) is generating initial seed. This may take some time.", device.name().unwrap());
         let mut seed = [1u64; 4];
         seed.try_fill(&mut rand::thread_rng())?;
-        let rand_state = Xoshiro256StarStar::new(&seed).iter_jump_state().take(chosen_workload).collect::<Vec<[u64;4]>>();
-        let mut random_state_local: *mut c_void = 0 as *mut c_void;
 
-        queue.enqueue_map_buffer(&mut random_state, CL_BLOCKING, CL_MAP_WRITE, 0, 32*chosen_workload, &mut random_state_local, &[]).map_err(|e| e.to_string())?.wait();
-        if random_state_local.is_null() {
-            return Err("could not load random state vector to memory. Consider changing random or lowering workload".into());
-        }
-        unsafe{ random_state_local.copy_from(rand_state.as_ptr() as *mut c_void, 32*chosen_workload ); }
-        // queue.enqueue_svm_unmap(&random_state,&[]).map_err(|e| e.to_string())?;
-        queue.enqueue_unmap_mem_object(random_state.get(), random_state_local, &[]).map_err(|e| e.to_string()).unwrap().wait();
+        let random_state = match random {
+            NonceGenEnum::Xoshiro => {
+                let mut random_state = Buffer::<cl_ulong>::create(context_ref, CL_MEM_READ_WRITE, 4*chosen_workload, ptr::null_mut()).expect("Buffer allocation failed");
+                let rand_state = Xoshiro256StarStar::new(&seed).iter_jump_state().take(chosen_workload).collect::<Vec<[u64;4]>>();
+                let mut random_state_local: *mut c_void = 0 as *mut c_void;
+                info!("{}: Generating initial seed. This may take some time.", name);
+
+                queue.enqueue_map_buffer(&mut random_state, CL_BLOCKING, CL_MAP_WRITE, 0, 32 * chosen_workload, &mut random_state_local, &[]).map_err(|e| e.to_string())?.wait();
+                if random_state_local.is_null() {
+                    return Err(format!("{}::could not load random state vector to memory. Consider changing random or lowering workload", name).into());
+                }
+                unsafe { random_state_local.copy_from(rand_state.as_ptr() as *mut c_void, 32 * chosen_workload); }
+                // queue.enqueue_svm_unmap(&random_state,&[]).map_err(|e| e.to_string())?;
+                queue.enqueue_unmap_mem_object(random_state.get(), random_state_local, &[]).map_err(|e| e.to_string()).unwrap().wait();
+                info!("{}: Done generating initial seed", name);
+                random_state
+            },
+            NonceGenEnum::Lean => {
+                let mut random_state = Buffer::<cl_ulong>::create(context_ref, CL_MEM_READ_WRITE, 1, ptr::null_mut()).expect("Buffer allocation failed");
+                queue.enqueue_write_buffer(&mut random_state, CL_BLOCKING, 0, &[thread_rng().next_u64()], &[]).map_err(|e| e.to_string()).unwrap().wait();
+                random_state
+            }
+        };
         Ok(
             Self{
-                context: context.clone(), workload: chosen_workload,
+                context: context.clone(), workload: chosen_workload, random: random.clone(),
                 heavy_hash, random_state,
                 queue, final_nonce, final_hash,
                 hash_header, matrix, target, events: Vec::<cl_event>::new()
             }
         )
     }
+}
+
+fn from_source(context: &Context, device: &Device, options: &str) -> Result<Program, String> {
+    let version = device.version()?;
+    let v = version.split(" ").nth(1).unwrap();
+    let mut compile_options = options.to_string();
+    compile_options += CL_MAD_ENABLE;
+    compile_options += CL_FINITE_MATH_ONLY;
+    if v == "2.0" || v == "2.1" || v=="3.0" {
+        info!("Compiling with OpenCl 2");
+        compile_options += CL_STD_2_0;
+    }
+
+    compile_options += &match Platform::new(device.platform().unwrap()).name() {
+        Ok(name) => format!("-D __PLATFORM__={} ", name.chars().map(|c|
+            match c.is_ascii_alphanumeric() {
+                true => c,
+                false => '_'
+            }
+        ).collect::<String>()),
+        Err(_) => String::new()
+    };
+    compile_options += &match device.compute_capability_major_nv() {
+        Ok(major) => format!("-D __COMPUTE_MAJOR__={} ", major),
+        Err(_) => String::new()
+    };
+    compile_options += &match device.compute_capability_minor_nv() {
+        Ok(minor) => format!("-D __COMPUTE_MINOR__={} ", minor),
+        Err(_) => String::new()
+    };
+
+    compile_options += &match device.gfxip_major_amd() {
+        Ok(major) => format!("-D __GFXIP_MAJOR__={} ", major),
+        Err(_) => String::new()
+    };
+
+    compile_options += &match device.gfxip_minor_amd() {
+        Ok(minor) => format!("-D __GFXIP_MINOR__={} ", minor),
+        Err(_) => String::new()
+    };
+
+    info!("Build OpenCL with {}", compile_options);
+
+    Program::create_and_build_from_source(&context, PROGRAM_SOURCE, compile_options.as_str())
 }

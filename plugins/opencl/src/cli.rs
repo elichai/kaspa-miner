@@ -1,3 +1,23 @@
+use std::str::FromStr;
+use crate::Error;
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum NonceGenEnum {
+    Lean,
+    Xoshiro,
+}
+
+impl FromStr for NonceGenEnum {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "lean" => Ok(Self::Lean),
+            "xoshiro" => Ok(Self::Xoshiro),
+            _ => Err("Unknown string".into())
+        }
+    }
+}
 
 #[derive(clap::Args, Debug)]
 pub struct OpenCLOpt {
@@ -7,7 +27,7 @@ pub struct OpenCLOpt {
     pub opencl_device: Option<Vec<u16>>,
     #[clap(
     long = "opencl-workload",
-    help = "Ratio of nonces to GPU possible parrallel run in OpenCL [defualt: 16]"
+    help = "Ratio of nonces to GPU possible parrallel run in OpenCL [defualt: 512]"
     )]
     pub opencl_workload: Option<Vec<f32>>,
     #[clap(
@@ -25,4 +45,10 @@ pub struct OpenCLOpt {
     help = "Uses SMID instructions in AMD. Miner will crash if instruction is not supported"
     )]
     pub experimental_amd: bool,
+    #[clap(
+    long="nonce-gen",
+    help = "The random method used to generate nonces. Options: (i) xoshiro - each thread in GPU will have its own random state, creating a (pseudo-)independent xoshiro sequence (ii) lean - each GPU will have a single random nonce, and each GPU thread will work on nonce + thread id.",
+    default_value="lean"
+    )]
+    pub nonce_gen: NonceGenEnum,
 }
