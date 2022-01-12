@@ -131,22 +131,22 @@ impl OpenCLGPUWorker {
 
         let program = match experimental_amd {
             true => match device.name().unwrap_or("Unknown".into()).to_lowercase().as_str() {
-                "tahiti" => Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/tahiti_kaspa-opencl.bin")], "").map_err(|e| e.to_string()),
-                "ellesmere" => Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/ellesmere_kaspa-opencl.bin")], "").map_err(|e| e.to_string()),
-                "gfx906" => Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/gfx906_kaspa-opencl.bin")], "").map_err(|e| e.to_string()),
-                "gfx908" => Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/gfx908_kaspa-opencl.bin")], "").map_err(|e| e.to_string()),
-                "gfx1011" =>  Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/gfx1011_kaspa-opencl.bin")], "").map_err(|e| e.to_string()),
-                "gfx1012" =>  Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/gfx1012_kaspa-opencl.bin")], "").map_err(|e| e.to_string()),
-                "gfx1030" =>  Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/gfx1030_kaspa-opencl.bin")], "").map_err(|e| e.to_string()),
-                "gfx1031" =>  Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/gfx1031_kaspa-opencl.bin")], "").map_err(|e| e.to_string()),
-                "gfx1032" =>  Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/gfx1032_kaspa-opencl.bin")], "").map_err(|e| e.to_string()),
+                "tahiti" => Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/tahiti_kaspa-opencl.bin")], "").expect(format!("{}::Program::create_and_build_from_binary failed", name).as_str()),
+                "ellesmere" => Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/ellesmere_kaspa-opencl.bin")], "").expect(format!("{}::Program::create_and_build_from_binary failed", name).as_str()),
+                "gfx906" => Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/gfx906_kaspa-opencl.bin")], "").expect(format!("{}::Program::create_and_build_from_binary failed", name).as_str()),
+                "gfx908" => Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/gfx908_kaspa-opencl.bin")], "").expect(format!("{}::Program::create_and_build_from_binary failed", name).as_str()),
+                "gfx1011" =>  Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/gfx1011_kaspa-opencl.bin")], "").expect(format!("{}::Program::create_and_build_from_binary failed", name).as_str()),
+                "gfx1012" =>  Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/gfx1012_kaspa-opencl.bin")], "").expect(format!("{}::Program::create_and_build_from_binary failed", name).as_str()),
+                "gfx1030" =>  Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/gfx1030_kaspa-opencl.bin")], "").expect(format!("{}::Program::create_and_build_from_binary failed", name).as_str()),
+                "gfx1031" =>  Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/gfx1031_kaspa-opencl.bin")], "").expect(format!("{}::Program::create_and_build_from_binary failed", name).as_str()),
+                "gfx1032" =>  Program::create_and_build_from_binary(&context, &[include_bytes!("../resources/bin/gfx1032_kaspa-opencl.bin")], "").expect(format!("{}::Program::create_and_build_from_binary failed", name).as_str()),
                 other => {
                     info!("{}: Found device {} without prebuilt binary. Trying to building from source.", name, other);
-                    from_source(&context, &device, "-D __FORCE_AMD_V_DOT4_U32_U8__=1 ")
+                    from_source(&context, &device, "-D __FORCE_AMD_V_DOT4_U32_U8__=1 ").expect(format!("{}::Program::create_and_build_from_source failed", name).as_str())
                 }
             },
-            false => from_source(&context, &device, "")
-        }.expect(format!("{}::Program::create_and_build_from_source failed", name).as_str());
+            false => from_source(&context, &device, "").expect(format!("{}::Program::create_and_build_from_source failed", name).as_str())
+        };
 
         let heavy_hash = match random {
             NonceGenEnum::Lean => Kernel::create(&program, "heavy_hash_lean").expect(format!("{}::Kernel::create failed", name).as_str()),
