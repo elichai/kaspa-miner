@@ -11,8 +11,8 @@ do
   rga --O3 -s opencl -c "$arch" -b plugins/opencl/resources/bin/kaspa-opencl.bin plugins/opencl/resources/kaspa-opencl.cl -D __FORCE_AMD_V_DOT4_U32_U8__=1
 done 
 
-for arch in Ellesmere Tahiti
+for arch in Ellesmere Tahiti gfx1010
 do 
-  /opt/radeon_gpu_analyzer/bin/rga --O3 -s opencl -c "$arch" -b plugins/opencl/resources/bin/kaspa-opencl.bin plugins/opencl/resources/kaspa-opencl.cl
+  rga --O3 -s opencl -c "$arch" -b plugins/opencl/resources/bin/kaspa-opencl.bin plugins/opencl/resources/kaspa-opencl.cl
 done 
 ```

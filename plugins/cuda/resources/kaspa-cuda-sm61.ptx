@@ -1188,11 +1188,11 @@ LBB0_6:
 	dp4a.u32.u32 %r453, %r454, %r18, %r449;
 	// end inline asm
 	shr.u32 	%r457, %r453, 10;
-	cvt.u16.u32 	%rs13, %r457;
-	cvt.u16.u32 	%rs14, %r389;
-	shr.u16 	%rs15, %rs14, 6;
-	and.b16  	%rs16, %rs15, 240;
-	or.b16  	%rs17, %rs13, %rs16;
+	cvt.u16.u32 	%rs13, %r389;
+	shr.u16 	%rs14, %rs13, 6;
+	and.b16  	%rs15, %rs14, 240;
+	cvt.u16.u32 	%rs16, %r457;
+	or.b16  	%rs17, %rs16, %rs15;
 	ld.local.u8 	%rs18, [%rd874];
 	xor.b16  	%rs19, %rs18, %rs17;
 	st.local.u8 	[%rd874], %rs19;

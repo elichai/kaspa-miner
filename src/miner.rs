@@ -265,7 +265,7 @@ impl MinerManager {
             let hashes = hashes_tried.swap(0, Ordering::AcqRel);
             let rate = (hashes as f64) / (now - last_instant).as_secs_f64();
             if hashes == 0 && i % 2 == 0 {
-                warn!("Workers stalled or crashed. Considered reducing workload")
+                warn!("Workers stalled or crashed. Considered reducing workload and check that your node is synced")
             } else if hashes != 0 {
                 let (rate, suffix) = Self::hash_suffix(rate);
                 info!("Current hashrate is: {:.2} {}", rate, suffix);
@@ -298,7 +298,7 @@ mod benches {
 
     #[bench]
     pub fn bench_mining(bh: &mut Bencher) {
-        let mut state = State::new(RpcBlock {
+        let mut state = State::new(0,RpcBlock {
             header: Some(RpcBlockHeader {
                 version: 1,
                 parents: vec![],

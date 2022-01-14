@@ -29,17 +29,19 @@ __constant__ static const uint8_t heavyP[Plen] = { 0x09, 0x85, 0x24, 0xb2, 0x52,
 __device__ __inline__ uint32_t amul4bit(uint32_t packed_vec1[32], uint32_t packed_vec2[32]) {
     // We assume each 32 bits have four values: A0 B0 C0 D0
     unsigned int res = 0;
+    #if __CUDA_ARCH__ < 610
+    char4 *a4 = (char4*)packed_vec1;
+    char4 *b4 = (char4*)packed_vec2;
+    #endif
     #pragma unroll
     for (int i=0; i<QUARTER_MATRIX_SIZE; i++) {
         #if __CUDA_ARCH__ >= 610
-        asm("dp4a.u32.u32" " %0, %1, %2, %3;": "=r" (res): "r" (packed_vec1[i]), "r" (packed_vec2[i]), "r" (res));
+        res = __dp4a(packed_vec1[i], packed_vec2[i], res);
         #else
-        char4 &a4 = *((char4*)&packed_vec1[i]);
-        char4 &b4 = *((char4*)&packed_vec2[i]);
-        res += a4.x*b4.x;
-        res += a4.y*b4.y; // In our code, the second and forth bytes are empty
-        res += a4.z*b4.z;
-        res += a4.w*b4.w; // In our code, the second and forth bytes are empty
+        res += a4[i].x*b4[i].x;
+        res += a4[i].y*b4[i].y;
+        res += a4[i].z*b4[i].z;
+        res += a4[i].w*b4[i].w;
         #endif
     }
 

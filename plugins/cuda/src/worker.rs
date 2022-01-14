@@ -70,10 +70,6 @@ impl<'gpu> Worker for CudaGPUWorker<'gpu> {
 
     }
 
-    fn get_workload(&self) -> usize {
-        self.workload
-    }
-
     fn load_block_constants(&mut self, hash_header: &[u8; 72], matrix: &[[u16; 64]; 64], target: &[u64; 4]) {
         let u8matrix: Arc<[[u8;64];64]> = Arc::new(matrix.map(|row| row.map(|v| v as u8)));
         let mut hash_header_gpu = self._module.get_global::<[u8; 72]>(&CString::new("hash_header").unwrap()).unwrap();
@@ -110,6 +106,10 @@ impl<'gpu> Worker for CudaGPUWorker<'gpu> {
     fn sync(&self) -> Result<(), Error> {
         self.stream.synchronize()?;
         Ok(())
+    }
+
+    fn get_workload(&self) -> usize {
+        self.workload
     }
 
     #[inline(always)]

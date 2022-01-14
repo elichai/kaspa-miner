@@ -231,8 +231,8 @@ STATIC inline void heavy_hash(
     }
 
     for (int rowId=0; rowId<32; rowId++){
-        uint32_t product1 = amul4bit((constant char4 *)matrix[(2*rowId)], (private char4 *)hash_part);
-        uint32_t product2 = amul4bit((constant char4 *)matrix[(2*rowId+1)], (private char4 *)hash_part);
+        uint32_t product1 = amul4bit((constant uint32_t *)matrix[(2*rowId)], (private uint32_t *)hash_part);
+        uint32_t product2 = amul4bit((constant uint32_t *)matrix[(2*rowId+1)], (private uint32_t *)hash_part);
 
         product1 >>= 10;
         product2 >>= 10;
@@ -283,7 +283,7 @@ kernel void heavy_hash_xoshiro(
       __constant const uint8_t hash_header[HASH_HEADER_SIZE],
       __constant const uint8_t matrix[MATRIX_SIZE][MATRIX_SIZE],
       __constant const uint256_t target,
-      uint64_t seed,
+      global uint64_t *seed,
       volatile global uint64_t *final_nonce,
       volatile global uint64_t *final_hash
   ) {
@@ -295,7 +295,6 @@ kernel void heavy_hash_xoshiro(
      work_group_barrier(CLK_GLOBAL_MEM_FENCE);
      #endif
 
-     private uint64_t nonce = seed + nonceId;
-
+     private uint64_t nonce = seed[0] + nonceId;
      heavy_hash(hash_header, matrix, target, nonce, final_nonce, final_hash);
   }
