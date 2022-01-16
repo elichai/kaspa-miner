@@ -61,4 +61,4 @@ sha3 = { git = "https://github.com/elichai/hashes", branch = "cSHAKE" }
 
 [workspace]
 members = ["plugins/*"]
-default-members = [".", "plugins/cuda"]
+default-members = [".", "plugins/cuda", "plugins/opencl"]

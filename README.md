@@ -46,7 +46,6 @@ There's a guide here on how to run a full node and how to generate addresses: ht
 
 Help:
 ```
-kaspa-miner 
 A Kaspa high performance CPU miner
 
 USAGE:
@@ -55,7 +54,7 @@ USAGE:
 OPTIONS:
     -a, --mining-address <MINING_ADDRESS>      The Kaspa address for the miner reward
         --cuda-device <CUDA_DEVICE>            Which CUDA GPUs to use [default: all]
-        --cuda-disable                         
+        --cuda-disable                         Disable cuda workers
         --cuda-workload <CUDA_WORKLOAD>        Ratio of nonces to GPU possible parrallel run [defualt: 16]
         --cuda-workload-absolute               The values given by workload are not ratio, but absolute number of nonces
                                                [default: false]
@@ -63,20 +62,27 @@ OPTIONS:
         --devfund <DEVFUND_ADDRESS>            Mine a percentage of the blocks to the Kaspa devfund [default:
                                                kaspa:pzhh76qc82wzduvsrd9xh4zde9qhp0xc8rl7qu2mvl2e42uvdqt75zrcgpm00]
         --devfund-percent <DEVFUND_PERCENT>    The percentage of blocks to send to the devfund [default: 1]
+        --experimental-amd                     Uses SMID instructions in AMD. Miner will crash if instruction is not
+                                               supported
     -h, --help                                 Print help information
         --mine-when-not-synced                 Mine even when kaspad says it is not synced, only useful when passing
                                                `--allow-submit-block-when-not-synced` to kaspad  [default: false]
+        --nonce-gen <NONCE_GEN>                The random method used to generate nonces. Options: (i) xoshiro - each
+                                               thread in GPU will have its own random state, creating a
+                                               (pseudo-)independent xoshiro sequence (ii) lean - each GPU will have a
+                                               single random nonce, and each GPU thread will work on nonce + thread id.
+                                               [default: lean]
         --opencl-device <OPENCL_DEVICE>        Which OpenCL GPUs to use on a specific platform
-        --opencl-enable                        
+        --opencl-enable                        Enable opencl, and take all devices of the chosen platform
+        --opencl-no-amd-binary                 Disable fetching of precompiled AMD kernel (if exists)
         --opencl-platform <OPENCL_PLATFORM>    Which OpenCL platform to use (limited to one per executable)
-        --opencl-workload <OPENCL_WORKLOAD>    Ratio of nonces to GPU possible parrallel run in OpenCL [defualt: 16]
+        --opencl-workload <OPENCL_WORKLOAD>    Ratio of nonces to GPU possible parrallel run in OpenCL [defualt: 512]
         --opencl-workload-absolute             The values given by workload are not ratio, but absolute number of nonces
                                                in OpenCL [default: false]
     -p, --port <PORT>                          Kaspad port [default: Mainnet = 16111, Testnet = 16211]
     -s, --kaspad-address <KASPAD_ADDRESS>      The IP of the kaspad instance [default: 127.0.0.1]
-    -t, --threads <NUM_THREADS>                Amount of miner threads to launch [default: number of logical cpus]
+    -t, --threads <NUM_THREADS>                Amount of CPU miner threads to launch [default: 0]
         --testnet                              Use testnet instead of mainnet [default: false]
-
 ```
 
 To start mining you just need to run the following:

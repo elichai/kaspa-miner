@@ -76,7 +76,7 @@ jobs:
       - name: Build on MacOS
         if: matrix.os == 'macos-latest'
         run: |
-          cargo build --target=x86_64-apple-darwin --release
+          cargo build --target=x86_64-apple-darwin --release -p kaspa-miner -p kaspaopencl
           asset_name="kaspa-miner-${{ github.event.release.tag_name }}-osx-amd64"
           mv ./target/x86_64-apple-darwin/release/kaspa-miner ${asset_name}
           echo "archive=${asset_name}" >> $GITHUB_ENV
