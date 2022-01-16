@@ -96,8 +96,8 @@ impl Opt {
             self.num_threads = Some(0);
         }
 
-        let miner_network = self.mining_address.split(":").next();
-        let devfund_network = self.devfund_address.split(":").next();
+        let miner_network = self.mining_address.split(':').next();
+        let devfund_network = self.devfund_address.split(':').next();
         if miner_network.is_some() && devfund_network.is_some() && miner_network != devfund_network {
             self.devfund_percent = 0;
             log::info!(
@@ -144,7 +144,7 @@ impl Opt {
     }
 
     fn port(&mut self) -> u16 {
-        *self.port.get_or_insert_with(|| if self.testnet { 16211 } else { 16110 })
+        *self.port.get_or_insert(if self.testnet { 16211 } else { 16110 })
     }
 
     pub fn log_level(&self) -> LevelFilter {

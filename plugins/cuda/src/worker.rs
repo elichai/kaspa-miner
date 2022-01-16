@@ -23,17 +23,16 @@ pub struct Kernel<'kernel> {
 impl<'kernel> Kernel<'kernel> {
     pub fn new(module: Weak<Module>, name: &'kernel str) -> Result<Kernel<'kernel>, Error> {
         let func = Arc::new(unsafe {
-            module.as_ptr().as_ref().unwrap().get_function(name).or_else(|e| {
+            module.as_ptr().as_ref().unwrap().get_function(name).map_err(|e| {
                 error!("Error loading function: {}", e);
-                Result::Err(e)
+                e
             })?
         });
         let (_, block_size) = func.suggested_launch_configuration(0, 0.into())?;
-        let grid_size;
 
         let device = CurrentContext::get_device()?;
         let sm_count = device.get_attribute(DeviceAttribute::MultiprocessorCount)? as u32;
-        grid_size = sm_count * func.max_active_blocks_per_multiprocessor(block_size.into(), 0)?;
+        let grid_size = sm_count * func.max_active_blocks_per_multiprocessor(block_size.into(), 0)?;
 
         Ok(Self { func, block_size, grid_size })
     }
@@ -76,7 +75,7 @@ impl<'gpu> Worker for CudaGPUWorker<'gpu> {
         matrix_gpu.copy_from(&u8matrix).map_err(|e| e.to_string()).unwrap();
 
         let mut target_gpu = self._module.get_global::<[u64; 4]>(&CString::new("target").unwrap()).unwrap();
-        target_gpu.copy_from(&target).map_err(|e| e.to_string()).unwrap();
+        target_gpu.copy_from(target).map_err(|e| e.to_string()).unwrap();
     }
 
     #[inline(always)]
@@ -127,19 +126,19 @@ impl<'gpu> CudaGPUWorker<'gpu> {
         let _module: Arc<Module>;
         info!("Device #{} compute version is {}.{}", device_id, major, minor);
         if major > 6 || (major == 6 && minor >= 1) {
-            _module = Arc::new(Module::from_str(PTX_61).or_else(|e| {
+            _module = Arc::new(Module::from_str(PTX_61).map_err(|e| {
                 error!("Error loading PTX: {}", e);
-                Result::Err(e)
+                e
             })?);
         } else if major >= 3 {
-            _module = Arc::new(Module::from_str(PTX_30).or_else(|e| {
+            _module = Arc::new(Module::from_str(PTX_30).map_err(|e| {
                 error!("Error loading PTX: {}", e);
-                Result::Err(e)
+                e
             })?);
-        } else if major >= 3 {
-            _module = Arc::new(Module::from_str(PTX_20).or_else(|e| {
+        } else if major >= 2 {
+            _module = Arc::new(Module::from_str(PTX_20).map_err(|e| {
                 error!("Error loading PTX: {}", e);
-                Result::Err(e)
+                e
             })?);
         } else {
             return Err("Cuda compute version not supported".into());
@@ -149,7 +148,7 @@ impl<'gpu> CudaGPUWorker<'gpu> {
 
         let mut heavy_hash_kernel = Kernel::new(Arc::downgrade(&_module), "heavy_hash")?;
 
-        let mut chosen_workload = 0 as usize;
+        let mut chosen_workload = 0usize;
         if is_absolute {
             chosen_workload = 1;
         } else {

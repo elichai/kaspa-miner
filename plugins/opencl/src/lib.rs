@@ -43,7 +43,7 @@ impl Plugin for OpenCLPlugin {
     fn get_worker_specs(&self) -> Vec<Box<dyn WorkerSpec>> {
         self.specs
             .iter()
-            .map(|spec| Box::new(spec.clone()) as Box<dyn WorkerSpec>)
+            .map(|spec| Box::new(*spec) as Box<dyn WorkerSpec>)
             .collect::<Vec<Box<dyn WorkerSpec>>>()
     }
 
@@ -68,7 +68,7 @@ impl Plugin for OpenCLPlugin {
                 self._enabled = true;
                 dev.iter().map(|d| device_ids[*d as usize]).collect::<Vec<cl_device_id>>()
             }
-            None => device_ids.clone(),
+            None => device_ids,
         };
 
         self.specs = (0..gpus.len())
@@ -77,7 +77,7 @@ impl Plugin for OpenCLPlugin {
                 device_id: Device::new(gpus[i]),
                 workload: match &opts.opencl_workload {
                     Some(workload) if i < workload.len() => workload[i],
-                    Some(workload) if workload.len() > 0 => *workload.last().unwrap(),
+                    Some(workload) if !workload.is_empty() => *workload.last().unwrap(),
                     _ => DEFAULT_WORKLOAD_SCALE,
                 },
                 is_absolute: opts.opencl_workload_absolute,

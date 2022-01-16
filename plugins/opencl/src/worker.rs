@@ -43,7 +43,7 @@ pub struct OpenCLGPUWorker {
 impl Worker for OpenCLGPUWorker {
     fn id(&self) -> String {
         let device = Device::new(self.context.default_device());
-        format!("{}", device.name().unwrap())
+        device.name().unwrap()
     }
 
     fn load_block_constants(&mut self, hash_header: &[u8; 72], matrix: &[[u16; 64]; 64], target: &[u64; 4]) {
@@ -146,23 +146,24 @@ impl OpenCLGPUWorker {
         use_binary: bool,
         random: &NonceGenEnum,
     ) -> Result<Self, Error> {
-        let name = device.board_name_amd().unwrap_or(device.name().unwrap_or("Unknown Device".into()));
+        let name = device.board_name_amd().unwrap_or_else(|_| device.name().unwrap_or_else(|_| "Unknown Device".into()));
         info!("{}: Using OpenCL", name);
-        let version = device.version().unwrap_or("unkown version".into());
-        info!("{}: Device supports {} with extensions: {}", name, version, device.extensions().unwrap_or("NA".into()));
+        let version = device.version().unwrap_or_else(|_|"unkown version".into());
+        info!("{}: Device supports {} with extensions: {}", name, version, device.extensions().unwrap_or_else(|_| "NA".into()));
 
-        let chosen_workload: usize;
-        if is_absolute {
-            chosen_workload = workload as usize
-        } else {
-            let max_work_group_size = (device.max_work_group_size().map_err(|e| e.to_string())?
-                * (device.max_compute_units().map_err(|e| e.to_string())? as usize))
-                as f32;
-            chosen_workload = (workload * max_work_group_size) as usize;
-        }
+
+        let chosen_workload = match is_absolute {
+            true => workload as usize,
+            false => {
+                let max_work_group_size = (device.max_work_group_size().map_err(|e| e.to_string())?
+                    * (device.max_compute_units().map_err(|e| e.to_string())? as usize))
+                    as f32;
+                (workload * max_work_group_size) as usize
+            }
+        };
         info!("{}: Chosen workload is {}", name, chosen_workload);
         let context =
-            Arc::new(Context::from_device(&device).expect(format!("{}::Context::from_device failed", name).as_str()));
+            Arc::new(Context::from_device(&device).unwrap_or_else(|_| panic!("{}::Context::from_device failed", name)));
         let context_ref = unsafe { Arc::as_ptr(&context).as_ref().unwrap() };
 
         let options = match experimental_amd {
@@ -171,7 +172,7 @@ impl OpenCLGPUWorker {
         };
         let program = match use_binary {
             true => {
-                let device_name = device.name().unwrap_or("Unknown".into()).to_lowercase();
+                let device_name = device.name().unwrap_or_else(|_| "Unknown".into()).to_lowercase();
                 info!("{}: Looking for binary for {}", name, device_name);
                 match device_name.as_str() {
                     "tahiti" => Program::create_and_build_from_binary(
@@ -179,80 +180,79 @@ impl OpenCLGPUWorker {
                         &[include_bytes!("../resources/bin/tahiti_kaspa-opencl.bin")],
                         "",
                     )
-                    .expect(format!("{}::Program::create_and_build_from_binary failed", name).as_str()),
+                    .unwrap_or_else(|_| panic!("{}::Program::create_and_build_from_binary failed", name)),
                     "ellesmere" => Program::create_and_build_from_binary(
                         &context,
                         &[include_bytes!("../resources/bin/ellesmere_kaspa-opencl.bin")],
                         "",
                     )
-                    .expect(format!("{}::Program::create_and_build_from_binary failed", name).as_str()),
+                    .unwrap_or_else(|_| panic!("{}::Program::create_and_build_from_binary failed", name)),
                     "gfx906" => Program::create_and_build_from_binary(
                         &context,
                         &[include_bytes!("../resources/bin/gfx906_kaspa-opencl.bin")],
                         "",
                     )
-                    .expect(format!("{}::Program::create_and_build_from_binary failed", name).as_str()),
+                    .unwrap_or_else(|_| panic!("{}::Program::create_and_build_from_binary failed", name)),
                     "gfx908" => Program::create_and_build_from_binary(
                         &context,
                         &[include_bytes!("../resources/bin/gfx908_kaspa-opencl.bin")],
                         "",
                     )
-                    .expect(format!("{}::Program::create_and_build_from_binary failed", name).as_str()),
+                    .unwrap_or_else(|_| panic!("{}::Program::create_and_build_from_binary failed", name)),
                     "gfx1011" => Program::create_and_build_from_binary(
                         &context,
                         &[include_bytes!("../resources/bin/gfx1011_kaspa-opencl.bin")],
                         "",
                     )
-                    .expect(format!("{}::Program::create_and_build_from_binary failed", name).as_str()),
+                    .unwrap_or_else(|_| panic!("{}::Program::create_and_build_from_binary failed", name)),
                     "gfx1012" => Program::create_and_build_from_binary(
                         &context,
                         &[include_bytes!("../resources/bin/gfx1012_kaspa-opencl.bin")],
                         "",
                     )
-                    .expect(format!("{}::Program::create_and_build_from_binary failed", name).as_str()),
+                    .unwrap_or_else(|_| panic!("{}::Program::create_and_build_from_binary failed", name)),
                     "gfx1030" => Program::create_and_build_from_binary(
                         &context,
                         &[include_bytes!("../resources/bin/gfx1030_kaspa-opencl.bin")],
                         "",
                     )
-                    .expect(format!("{}::Program::create_and_build_from_binary failed", name).as_str()),
+                    .unwrap_or_else(|_| panic!("{}::Program::create_and_build_from_binary failed", name)),
                     "gfx1031" => Program::create_and_build_from_binary(
                         &context,
                         &[include_bytes!("../resources/bin/gfx1031_kaspa-opencl.bin")],
                         "",
                     )
-                    .expect(format!("{}::Program::create_and_build_from_binary failed", name).as_str()),
+                    .unwrap_or_else(|_| panic!("{}::Program::create_and_build_from_binary failed", name)),
                     "gfx1032" => Program::create_and_build_from_binary(
                         &context,
                         &[include_bytes!("../resources/bin/gfx1032_kaspa-opencl.bin")],
                         "",
                     )
-                    .expect(format!("{}::Program::create_and_build_from_binary failed", name).as_str()),
+                    .unwrap_or_else(|_| panic!("{}::Program::create_and_build_from_binary failed", name)),
                     other => {
                         info!(
                             "{}: Found device {} without prebuilt binary. Trying to building from source.",
                             name, other
                         );
                         from_source(&context, &device, options)
-                            .expect(format!("{}::Program::create_and_build_from_source failed", name).as_str())
+                            .unwrap_or_else(|_| panic!("{}::Program::create_and_build_from_binary failed", name))
                     }
                 }
             }
             false => from_source(&context, &device, options)
-                .expect(format!("{}::Program::create_and_build_from_source failed", name).as_str()),
+                .unwrap_or_else(|_| panic!("{}::Program::create_and_build_from_binary failed", name)),
         };
 
         let heavy_hash = match random {
-            NonceGenEnum::Lean => {
-                Kernel::create(&program, "heavy_hash_lean").expect(format!("{}::Kernel::create failed", name).as_str())
-            }
+            NonceGenEnum::Lean => Kernel::create(&program, "heavy_hash_lean")
+                .unwrap_or_else(|_| panic!("{}::Kernel::create failed", name)),
             NonceGenEnum::Xoshiro => Kernel::create(&program, "heavy_hash_xoshiro")
-                .expect(format!("{}::Kernel::create failed", name).as_str()),
+                .unwrap_or_else(|_| panic!("{}::Kernel::create failed", name)),
         };
 
         let queue =
             CommandQueue::create_with_properties(&context, context.default_device(), CL_QUEUE_PROFILING_ENABLE, 0)
-                .expect(format!("{}::CommandQueue::create_with_properties failed", name).as_str());
+                .unwrap_or_else(|_| panic!("{}::CommandQueue::create_with_properties failed", name));
 
         let final_nonce = Buffer::<cl_ulong>::create(context_ref, CL_MEM_READ_WRITE, 1, ptr::null_mut())
             .expect("Buffer allocation failed");
@@ -271,17 +271,17 @@ impl OpenCLGPUWorker {
 
         let random_state = match random {
             NonceGenEnum::Xoshiro => {
-                let mut random_state =
+                let random_state =
                     Buffer::<cl_ulong>::create(context_ref, CL_MEM_READ_WRITE, 4 * chosen_workload, ptr::null_mut())
                         .expect("Buffer allocation failed");
                 let rand_state =
                     Xoshiro256StarStar::new(&seed).iter_jump_state().take(chosen_workload).collect::<Vec<[u64; 4]>>();
-                let mut random_state_local: *mut c_void = 0 as *mut c_void;
+                let mut random_state_local: *mut c_void = std::ptr::null_mut::<c_void>();
                 info!("{}: Generating initial seed. This may take some time.", name);
 
                 queue
                     .enqueue_map_buffer(
-                        &mut random_state,
+                        &random_state,
                         CL_BLOCKING,
                         CL_MAP_WRITE,
                         0,
@@ -321,9 +321,9 @@ impl OpenCLGPUWorker {
             }
         };
         Ok(Self {
-            context: context.clone(),
+            context,
             workload: chosen_workload,
-            random: random.clone(),
+            random: *random,
             heavy_hash,
             random_state,
             queue,
@@ -339,7 +339,7 @@ impl OpenCLGPUWorker {
 
 fn from_source(context: &Context, device: &Device, options: &str) -> Result<Program, String> {
     let version = device.version()?;
-    let v = version.split(" ").nth(1).unwrap();
+    let v = version.split(' ').nth(1).unwrap();
     let mut compile_options = options.to_string();
     compile_options += CL_MAD_ENABLE;
     compile_options += CL_FINITE_MATH_ONLY;
@@ -381,5 +381,5 @@ fn from_source(context: &Context, device: &Device, options: &str) -> Result<Prog
 
     info!("Build OpenCL with {}", compile_options);
 
-    Program::create_and_build_from_source(&context, PROGRAM_SOURCE, compile_options.as_str())
+    Program::create_and_build_from_source(context, PROGRAM_SOURCE, compile_options.as_str())
 }

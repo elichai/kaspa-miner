@@ -7,6 +7,7 @@ use libloading::{Library, Symbol};
 
 pub type Error = Box<dyn StdError + Send + Sync + 'static>;
 
+#[derive(Default)]
 pub struct PluginManager {
     plugins: Vec<Box<dyn Plugin>>,
     loaded_libraries: Vec<Library>,
@@ -68,13 +69,13 @@ impl PluginManager {
         self.plugins.iter_mut().for_each(|plugin| {
             plugin
                 .process_option(matchs)
-                .expect(format!("Could not process option for plugin {}", plugin.name()).as_str())
+                .unwrap_or_else(|_| panic!("Could not process option for plugin {}", plugin.name()))
         });
         Ok(())
     }
 
     pub fn has_specs(&self) -> bool {
-        self.plugins.len() > 0
+        self.plugins.is_empty()
     }
 }
 
@@ -128,7 +129,7 @@ macro_rules! declare_plugin {
     ($plugin_type:ty, $constructor:path, $args:ty) => {
         use clap::Args;
         #[no_mangle]
-        pub extern "C" fn _plugin_create(
+        pub unsafe extern "C" fn _plugin_create(
             app: *mut clap::App,
         ) -> (*mut clap::App, *mut dyn $crate::Plugin, *const $crate::Error) {
             // make sure the constructor is the correct type.

@@ -51,7 +51,7 @@ impl MinerManager {
             handles.append(&mut Self::launch_gpu_threads(
                 send_channel.clone(),
                 Arc::clone(&hashes_tried),
-                recv.clone(),
+                recv,
                 manager,
             ));
         }
