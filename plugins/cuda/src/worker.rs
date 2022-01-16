@@ -10,6 +10,8 @@ use rand::Fill;
 use std::ffi::CString;
 use std::sync::{Arc, Weak};
 
+static PTX_86: &str = include_str!("../resources/kaspa-cuda-sm86.ptx");
+static PTX_75: &str = include_str!("../resources/kaspa-cuda-sm75.ptx");
 static PTX_61: &str = include_str!("../resources/kaspa-cuda-sm61.ptx");
 static PTX_30: &str = include_str!("../resources/kaspa-cuda-sm30.ptx");
 static PTX_20: &str = include_str!("../resources/kaspa-cuda-sm20.ptx");
@@ -125,7 +127,17 @@ impl<'gpu> CudaGPUWorker<'gpu> {
         let minor = device.get_attribute(DeviceAttribute::ComputeCapabilityMinor)?;
         let _module: Arc<Module>;
         info!("Device #{} compute version is {}.{}", device_id, major, minor);
-        if major > 6 || (major == 6 && minor >= 1) {
+        if major > 8  || (major == 8 && minor >= 6){
+            _module = Arc::new(Module::from_str(PTX_86).map_err(|e| {
+                error!("Error loading PTX: {}", e);
+                e
+            })?);
+        } else if major > 7 || (major == 7 && minor >= 5) {
+            _module = Arc::new(Module::from_str(PTX_75).map_err(|e| {
+                error!("Error loading PTX: {}", e);
+                e
+            })?);
+        } else if major > 6 || (major == 6 && minor >= 1) {
             _module = Arc::new(Module::from_str(PTX_61).map_err(|e| {
                 error!("Error loading PTX: {}", e);
                 e
