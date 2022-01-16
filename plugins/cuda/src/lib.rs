@@ -1,11 +1,11 @@
 #[macro_use]
 extern crate kaspa_miner;
 
-use std::error::Error as StdError;
+use clap::{ArgMatches, FromArgMatches};
 use cust::prelude::*;
+use kaspa_miner::{Plugin, Worker, WorkerSpec};
 use log::LevelFilter;
-use clap::{ArgMatches,FromArgMatches};
-use kaspa_miner::{Worker, Plugin, WorkerSpec};
+use std::error::Error as StdError;
 
 pub type Error = Box<dyn StdError + Send + Sync + 'static>;
 
@@ -15,18 +15,18 @@ mod worker;
 use crate::cli::CudaOpt;
 use crate::worker::CudaGPUWorker;
 
-const DEFAULT_WORKLOAD_SCALE : f32= 16.;
+const DEFAULT_WORKLOAD_SCALE: f32 = 16.;
 
 pub struct CudaPlugin {
     specs: Vec<CudaWorkerSpec>,
-    _enabled: bool
+    _enabled: bool,
 }
 
 impl CudaPlugin {
     fn new() -> Result<Self, Error> {
         cust::init(CudaFlags::empty())?;
         env_logger::builder().filter_level(LevelFilter::Info).parse_default_env().init();
-        Ok(Self{ specs: Vec::new(), _enabled: false })
+        Ok(Self { specs: Vec::new(), _enabled: false })
     }
 }
 
@@ -40,9 +40,10 @@ impl Plugin for CudaPlugin {
     }
 
     fn get_worker_specs(&self) -> Vec<Box<dyn WorkerSpec>> {
-        self.specs.iter().map(
-            |spec| Box::new(spec.clone()) as Box<dyn WorkerSpec>
-        ).collect::<Vec<Box<dyn WorkerSpec>>>()
+        self.specs
+            .iter()
+            .map(|spec| Box::new(spec.clone()) as Box<dyn WorkerSpec>)
+            .collect::<Vec<Box<dyn WorkerSpec>>>()
     }
 
     //noinspection RsTypeCheck
@@ -51,7 +52,7 @@ impl Plugin for CudaPlugin {
 
         self._enabled = !opts.cuda_disable;
 
-        let gpus : Vec<u16> = match &opts.cuda_device {
+        let gpus: Vec<u16> = match &opts.cuda_device {
             Some(devices) => devices.clone(),
             None => {
                 let gpu_count = Device::num_devices().unwrap() as u16;
@@ -59,27 +60,26 @@ impl Plugin for CudaPlugin {
             }
         };
 
-        self.specs = (0..gpus.len()).map(
-            |i| CudaWorkerSpec{
+        self.specs = (0..gpus.len())
+            .map(|i| CudaWorkerSpec {
                 device_id: gpus[i] as u32,
                 workload: match &opts.cuda_workload {
-                    Some(workload) if i < workload.len()  => workload[i],
+                    Some(workload) if i < workload.len() => workload[i],
                     Some(workload) if workload.len() > 0 => *workload.last().unwrap(),
-                    _ => DEFAULT_WORKLOAD_SCALE
+                    _ => DEFAULT_WORKLOAD_SCALE,
                 },
-                is_absolute: opts.cuda_workload_absolute
-            }
-        ).collect();
+                is_absolute: opts.cuda_workload_absolute,
+            })
+            .collect();
         Ok(())
     }
 }
-
 
 #[derive(Copy, Clone)]
 struct CudaWorkerSpec {
     device_id: u32,
     workload: f32,
-    is_absolute: bool
+    is_absolute: bool,
 }
 
 impl WorkerSpec for CudaWorkerSpec {

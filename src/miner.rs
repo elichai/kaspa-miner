@@ -41,16 +41,19 @@ pub fn get_num_cpus(n_cpus: Option<u16>) -> u16 {
 const LOG_RATE: Duration = Duration::from_secs(10);
 
 impl MinerManager {
-    pub fn new(
-        send_channel: Sender<KaspadMessage>,
-        n_cpus: Option<u16>,
-        manager: &PluginManager
-    ) -> Self {
+    pub fn new(send_channel: Sender<KaspadMessage>, n_cpus: Option<u16>, manager: &PluginManager) -> Self {
         let hashes_tried = Arc::new(AtomicU64::new(0));
         let (send, recv) = watch::channel(None);
-        let mut handles = Self::launch_cpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv.clone(), n_cpus).collect::<Vec<MinerHandler>>();
+        let mut handles =
+            Self::launch_cpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv.clone(), n_cpus)
+                .collect::<Vec<MinerHandler>>();
         if manager.has_specs() {
-            handles.append(&mut Self::launch_gpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv.clone(), manager));
+            handles.append(&mut Self::launch_gpu_threads(
+                send_channel.clone(),
+                Arc::clone(&hashes_tried),
+                recv.clone(),
+                manager,
+            ));
         }
         Self {
             handles,
@@ -79,8 +82,8 @@ impl MinerManager {
         send_channel: Sender<KaspadMessage>,
         hashes_tried: Arc<AtomicU64>,
         work_channel: watch::Receiver<Option<pow::State>>,
-        manager: &PluginManager
-    ) -> Vec<MinerHandler>{
+        manager: &PluginManager,
+    ) -> Vec<MinerHandler> {
         let mut vec = Vec::<MinerHandler>::new();
         let specs = manager.build().unwrap();
         for spec in specs {
@@ -88,7 +91,7 @@ impl MinerManager {
                 send_channel.clone(),
                 work_channel.clone(),
                 Arc::clone(&hashes_tried),
-                spec
+                spec,
             ));
         }
         vec
@@ -120,11 +123,11 @@ impl MinerManager {
         send_channel: Sender<KaspadMessage>,
         mut block_channel: watch::Receiver<Option<pow::State>>,
         hashes_tried: Arc<AtomicU64>,
-        spec: Box<dyn WorkerSpec>
+        spec: Box<dyn WorkerSpec>,
     ) -> MinerHandler {
         std::thread::spawn(move || {
             let mut box_ = spec.build();
-            let gpu_work =box_.as_mut();
+            let gpu_work = box_.as_mut();
             (|| {
                 info!("Spawned Thread for GPU {}", gpu_work.id());
                 let mut nonces = vec![0u64; 1];
@@ -249,10 +252,10 @@ impl MinerManager {
                 }
                 Ok(())
             })()
-                .map_err(|e: Error| {
-                    error!("CPU thread crashed: {}", e.to_string());
-                    e
-                })
+            .map_err(|e: Error| {
+                error!("CPU thread crashed: {}", e.to_string());
+                e
+            })
         })
     }
 
@@ -298,24 +301,28 @@ mod benches {
 
     #[bench]
     pub fn bench_mining(bh: &mut Bencher) {
-        let mut state = State::new(0,RpcBlock {
-            header: Some(RpcBlockHeader {
-                version: 1,
-                parents: vec![],
-                hash_merkle_root: "23618af45051560529440541e7dc56be27676d278b1e00324b048d410a19d764".to_string(),
-                accepted_id_merkle_root: "947d1a10378d6478b6957a0ed71866812dee33684968031b1cace4908c149d94".to_string(),
-                utxo_commitment: "ec5e8fc0bc0c637004cee262cef12e7cf6d9cd7772513dbd466176a07ab7c4f4".to_string(),
-                timestamp: 654654353,
-                bits: 0x1e7fffff,
-                nonce: 0,
-                daa_score: 654456,
-                blue_work: "d8e28a03234786".to_string(),
-                pruning_point: "be4c415d378f9113fabd3c09fcc84ddb6a00f900c87cb6a1186993ddc3014e2d".to_string(),
-                blue_score: 1164419,
-            }),
-            transactions: vec![],
-            verbose_data: None,
-        })
+        let mut state = State::new(
+            0,
+            RpcBlock {
+                header: Some(RpcBlockHeader {
+                    version: 1,
+                    parents: vec![],
+                    hash_merkle_root: "23618af45051560529440541e7dc56be27676d278b1e00324b048d410a19d764".to_string(),
+                    accepted_id_merkle_root: "947d1a10378d6478b6957a0ed71866812dee33684968031b1cace4908c149d94"
+                        .to_string(),
+                    utxo_commitment: "ec5e8fc0bc0c637004cee262cef12e7cf6d9cd7772513dbd466176a07ab7c4f4".to_string(),
+                    timestamp: 654654353,
+                    bits: 0x1e7fffff,
+                    nonce: 0,
+                    daa_score: 654456,
+                    blue_work: "d8e28a03234786".to_string(),
+                    pruning_point: "be4c415d378f9113fabd3c09fcc84ddb6a00f900c87cb6a1186993ddc3014e2d".to_string(),
+                    blue_score: 1164419,
+                }),
+                transactions: vec![],
+                verbose_data: None,
+            },
+        )
         .unwrap();
         nonce = thread_rng().next_u64();
         bh.iter(|| {

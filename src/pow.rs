@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use kaspa_miner::Worker;
 pub use crate::pow::hasher::HeaderHasher;
 use crate::{
     pow::{
@@ -11,6 +10,7 @@ use crate::{
     target::{self, Uint256},
     Error,
 };
+use kaspa_miner::Worker;
 
 mod hasher;
 mod heavy_hash;
@@ -42,19 +42,12 @@ impl State {
         let matrix = Arc::new(Matrix::generate(pre_pow_hash));
         let mut pow_hash_header = [0u8; 72];
 
-        pow_hash_header.copy_from_slice([
-            pre_pow_hash.to_le_bytes().as_slice(),
-            header.timestamp.to_le_bytes().as_slice(),
-            [0u8; 32].as_slice(),
-        ].concat().as_slice());
-        Ok(Self {
-            id,
-            matrix,
-            target,
-            pow_hash_header,
-            block: Arc::new(block),
-            hasher,
-        })
+        pow_hash_header.copy_from_slice(
+            [pre_pow_hash.to_le_bytes().as_slice(), header.timestamp.to_le_bytes().as_slice(), [0u8; 32].as_slice()]
+                .concat()
+                .as_slice(),
+        );
+        Ok(Self { id, matrix, target, pow_hash_header, block: Arc::new(block), hasher })
     }
 
     #[inline(always)]
@@ -82,13 +75,13 @@ impl State {
         })
     }
 
-    pub fn load_to_gpu(&self, gpu_work: &mut dyn Worker){
+    pub fn load_to_gpu(&self, gpu_work: &mut dyn Worker) {
         gpu_work.load_block_constants(&self.pow_hash_header, &self.matrix.0, &self.target.0);
     }
 
     #[inline(always)]
     pub fn pow_gpu(&self, gpu_work: &mut dyn Worker) {
-        gpu_work.calculate_hash( None);
+        gpu_work.calculate_hash(None);
     }
 }
 

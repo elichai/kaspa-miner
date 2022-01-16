@@ -1,9 +1,8 @@
+use clap::Parser;
 use log::LevelFilter;
 use std::{net::IpAddr, str::FromStr};
-use clap::Parser;
 
 use crate::Error;
-
 
 #[derive(Parser, Debug)]
 #[clap(name = "kaspa-miner", about = "A Kaspa high performance CPU miner")]
@@ -12,15 +11,14 @@ pub struct Opt {
     pub debug: bool,
     #[clap(short = 'a', long = "mining-address", help = "The Kaspa address for the miner reward")]
     pub mining_address: String,
-    #[clap(
-        short = 's',
-        long = "kaspad-address",
-        default_value = "127.0.0.1",
-        help = "The IP of the kaspad instance"
-    )]
+    #[clap(short = 's', long = "kaspad-address", default_value = "127.0.0.1", help = "The IP of the kaspad instance")]
     pub kaspad_address: String,
 
-    #[clap(long = "devfund", help = "Mine a percentage of the blocks to the Kaspa devfund", default_value = "kaspa:pzhh76qc82wzduvsrd9xh4zde9qhp0xc8rl7qu2mvl2e42uvdqt75zrcgpm00")]
+    #[clap(
+        long = "devfund",
+        help = "Mine a percentage of the blocks to the Kaspa devfund",
+        default_value = "kaspa:pzhh76qc82wzduvsrd9xh4zde9qhp0xc8rl7qu2mvl2e42uvdqt75zrcgpm00"
+    )]
     pub devfund_address: String,
 
     #[clap(long = "devfund-percent", help = "The percentage of blocks to send to the devfund", default_value = "1", parse(try_from_str = parse_devfund_percent))]
@@ -31,18 +29,13 @@ pub struct Opt {
 
     #[clap(long, help = "Use testnet instead of mainnet [default: false]")]
     testnet: bool,
-    #[clap(
-        short = 't',
-        long = "threads",
-        help = "Amount of CPU miner threads to launch [default: 0]"
-    )]
+    #[clap(short = 't', long = "threads", help = "Amount of CPU miner threads to launch [default: 0]")]
     pub num_threads: Option<u16>,
     #[clap(
         long = "mine-when-not-synced",
         help = "Mine even when kaspad says it is not synced, only useful when passing `--allow-submit-block-when-not-synced` to kaspad  [default: false]"
     )]
     pub mine_when_not_synced: bool,
-
     // #[structopt(long = "opencl-platform", default_value = "0", help = "Which OpenCL GPUs to use (only GPUs currently. experimental) [default: none]")]
     // pub opencl_platform: u16,
     // #[structopt(long = "opencl-device", use_delimiter = true, help = "Which OpenCL GPUs to use (only GPUs currently. experimental) [default: none]")]
@@ -98,18 +91,19 @@ impl Opt {
             self.kaspad_address = format!("grpc://{}:{}", self.kaspad_address, port);
         }
         log::info!("kaspad address: {}", self.kaspad_address);
-        
+
         if self.num_threads.is_none() {
             self.num_threads = Some(0);
         }
 
         let miner_network = self.mining_address.split(":").next();
         let devfund_network = self.devfund_address.split(":").next();
-        if  miner_network.is_some() && devfund_network.is_some() && miner_network != devfund_network {
+        if miner_network.is_some() && devfund_network.is_some() && miner_network != devfund_network {
             self.devfund_percent = 0;
             log::info!(
                 "Mining address ({}) and devfund ({}) are not from the same network. Disabling devfund.",
-                miner_network.unwrap(), devfund_network.unwrap()
+                miner_network.unwrap(),
+                devfund_network.unwrap()
             )
         }
 

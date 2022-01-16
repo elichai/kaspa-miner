@@ -1,12 +1,12 @@
 const LONG_JUMP: [u64; 4] = [0x76e15d3efefdcbbf, 0xc5004e441c522fb3, 0x77710069854ee241, 0x39109bb02acbe635];
 
-#[derive(Clone,Copy)]
+#[derive(Clone, Copy)]
 pub struct Xoshiro256StarStar {
-    pub(crate) state: [u64; 4]
+    pub(crate) state: [u64; 4],
 }
 
 pub struct Xoshiro256StarStarStateIter {
-    current: Xoshiro256StarStar
+    current: Xoshiro256StarStar,
 }
 
 fn rotl(x: u64, k: i32) -> u64 {
@@ -14,14 +14,14 @@ fn rotl(x: u64, k: i32) -> u64 {
 }
 
 impl Xoshiro256StarStar {
-    pub fn new(seed: &[u64;4]) -> Self{
-        let mut state = [0u64;4];
+    pub fn new(seed: &[u64; 4]) -> Self {
+        let mut state = [0u64; 4];
         state.copy_from_slice(seed);
-        return Self{state};
+        return Self { state };
     }
 
     pub fn next(&mut self) -> u64 {
-        let result = u64::wrapping_mul(rotl(u64::wrapping_mul(self.state[1] , 5), 7) , 9);
+        let result = u64::wrapping_mul(rotl(u64::wrapping_mul(self.state[1], 5), 7), 9);
         let t = self.state[1] << 17;
 
         self.state[2] ^= self.state[0];
@@ -36,7 +36,7 @@ impl Xoshiro256StarStar {
         return result;
     }
 
-    pub fn long_jump(&mut self)  {
+    pub fn long_jump(&mut self) {
         let mut s0 = 0u64;
         let mut s1 = 0u64;
         let mut s2 = 0u64;
@@ -59,17 +59,17 @@ impl Xoshiro256StarStar {
         }
     }
 
-    pub fn iter_jump_state(&self) -> impl Iterator<Item=[u64; 4]> {
+    pub fn iter_jump_state(&self) -> impl Iterator<Item = [u64; 4]> {
         let current = Xoshiro256StarStar::new(&self.state);
-        return Xoshiro256StarStarStateIter{ current }
+        return Xoshiro256StarStarStateIter { current };
     }
 }
 
 impl Iterator for Xoshiro256StarStarStateIter {
     type Item = [u64; 4];
 
-    fn next(&mut self) -> Option<[u64;4]> {
+    fn next(&mut self) -> Option<[u64; 4]> {
         self.current.long_jump();
-        return Some(self.current.state)
+        return Some(self.current.state);
     }
 }

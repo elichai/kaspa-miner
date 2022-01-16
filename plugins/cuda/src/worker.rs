@@ -1,20 +1,18 @@
-use std::ffi::CString;
+use crate::Error;
 use cust::context::CurrentContext;
 use cust::device::DeviceAttribute;
 use cust::function::Function;
 use cust::prelude::*;
+use kaspa_miner::xoshiro256starstar::Xoshiro256StarStar;
+use kaspa_miner::Worker;
 use log::{error, info};
 use rand::Fill;
+use std::ffi::CString;
 use std::sync::{Arc, Weak};
-use kaspa_miner::Worker;
-use kaspa_miner::xoshiro256starstar::Xoshiro256StarStar;
-use crate::Error;
-
 
 static PTX_61: &str = include_str!("../resources/kaspa-cuda-sm61.ptx");
 static PTX_30: &str = include_str!("../resources/kaspa-cuda-sm30.ptx");
 static PTX_20: &str = include_str!("../resources/kaspa-cuda-sm20.ptx");
-
 
 pub struct Kernel<'kernel> {
     func: Arc<Function<'kernel>>,
@@ -24,7 +22,7 @@ pub struct Kernel<'kernel> {
 
 impl<'kernel> Kernel<'kernel> {
     pub fn new(module: Weak<Module>, name: &'kernel str) -> Result<Kernel<'kernel>, Error> {
-        let func  = Arc::new(unsafe {
+        let func = Arc::new(unsafe {
             module.as_ptr().as_ref().unwrap().get_function(name).or_else(|e| {
                 error!("Error loading function: {}", e);
                 Result::Err(e)
@@ -56,7 +54,7 @@ pub struct CudaGPUWorker<'gpu> {
 
     pub workload: usize,
     stream: Stream,
-    rand_state: DeviceBuffer<[u64;4]>,
+    rand_state: DeviceBuffer<[u64; 4]>,
 
     final_nonce_buff: DeviceBuffer<u64>,
 
@@ -67,11 +65,10 @@ impl<'gpu> Worker for CudaGPUWorker<'gpu> {
     fn id(&self) -> String {
         let device = CurrentContext::get_device().unwrap();
         format!("#{} ({})", self.device_id, device.name().unwrap())
-
     }
 
     fn load_block_constants(&mut self, hash_header: &[u8; 72], matrix: &[[u16; 64]; 64], target: &[u64; 4]) {
-        let u8matrix: Arc<[[u8;64];64]> = Arc::new(matrix.map(|row| row.map(|v| v as u8)));
+        let u8matrix: Arc<[[u8; 64]; 64]> = Arc::new(matrix.map(|row| row.map(|v| v as u8)));
         let mut hash_header_gpu = self._module.get_global::<[u8; 72]>(&CString::new("hash_header").unwrap()).unwrap();
         hash_header_gpu.copy_from(hash_header).map_err(|e| e.to_string()).unwrap();
 
@@ -98,7 +95,7 @@ impl<'gpu> Worker for CudaGPUWorker<'gpu> {
                     self.final_nonce_buff.as_device_ptr()
                 )
             )
-                .unwrap(); // We see errors in sync
+            .unwrap(); // We see errors in sync
         }
     }
 
@@ -165,14 +162,20 @@ impl<'gpu> CudaGPUWorker<'gpu> {
         info!("GPU #{} Chosen workload: {}", device_id, chosen_workload);
         heavy_hash_kernel.set_workload(chosen_workload as u32);
 
-        let mut rand_state = unsafe { DeviceBuffer::<[u64;4]>::zeroed(chosen_workload).unwrap() };
+        let mut rand_state = unsafe { DeviceBuffer::<[u64; 4]>::zeroed(chosen_workload).unwrap() };
 
         let final_nonce_buff = vec![0u64; 1].as_slice().as_dbuf()?;
 
         info!("GPU #{} is generating initial seed. This may take some time.", device_id);
         let mut seed = [1u64; 4];
         seed.try_fill(&mut rand::thread_rng())?;
-        rand_state.copy_from(Xoshiro256StarStar::new(&seed).iter_jump_state().take(chosen_workload).collect::<Vec<[u64;4]>>().as_slice())?;
+        rand_state.copy_from(
+            Xoshiro256StarStar::new(&seed)
+                .iter_jump_state()
+                .take(chosen_workload)
+                .collect::<Vec<[u64; 4]>>()
+                .as_slice(),
+        )?;
         info!("GPU #{} initialized", device_id);
         Ok(Self {
             device_id,
@@ -185,7 +188,6 @@ impl<'gpu> CudaGPUWorker<'gpu> {
             heavy_hash_kernel,
         })
     }
-
 
     /*pub(crate) fn check_random(&self) -> Result<(),Error> {
         let mut nonces = vec![0u64; GPU_THREADS];
