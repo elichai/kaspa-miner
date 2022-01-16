@@ -75,7 +75,7 @@ impl PluginManager {
     }
 
     pub fn has_specs(&self) -> bool {
-        self.plugins.is_empty()
+        !self.plugins.is_empty()
     }
 }
 
