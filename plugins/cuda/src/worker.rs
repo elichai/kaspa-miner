@@ -127,7 +127,7 @@ impl<'gpu> CudaGPUWorker<'gpu> {
         let minor = device.get_attribute(DeviceAttribute::ComputeCapabilityMinor)?;
         let _module: Arc<Module>;
         info!("Device #{} compute version is {}.{}", device_id, major, minor);
-        if major > 8  || (major == 8 && minor >= 6){
+        if major > 8 || (major == 8 && minor >= 6) {
             _module = Arc::new(Module::from_str(PTX_86).map_err(|e| {
                 error!("Error loading PTX: {}", e);
                 e
