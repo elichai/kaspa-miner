@@ -44,9 +44,7 @@ fn filter_plugins(dirname: &str) -> Vec<String> {
                     && fname.extension().is_some()
                     && fname.extension().and_then(OsStr::to_str).unwrap_or_default().starts_with(DLL_EXTENSION)
             })
-            .filter(|fname| {
-                WHITELIST.iter().any(|lib| *lib == fname.file_stem().and_then(OsStr::to_str).unwrap())
-            })
+            .filter(|fname| WHITELIST.iter().any(|lib| *lib == fname.file_stem().and_then(OsStr::to_str).unwrap()))
             .map(|path| path.to_str().unwrap().to_string())
             .collect::<Vec<String>>(),
         _ => Vec::<String>::new(),

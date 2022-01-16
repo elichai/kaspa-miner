@@ -40,10 +40,7 @@ impl Plugin for CudaPlugin {
     }
 
     fn get_worker_specs(&self) -> Vec<Box<dyn WorkerSpec>> {
-        self.specs
-            .iter()
-            .map(|spec| Box::new(*spec) as Box<dyn WorkerSpec>)
-            .collect::<Vec<Box<dyn WorkerSpec>>>()
+        self.specs.iter().map(|spec| Box::new(*spec) as Box<dyn WorkerSpec>).collect::<Vec<Box<dyn WorkerSpec>>>()
     }
 
     //noinspection RsTypeCheck

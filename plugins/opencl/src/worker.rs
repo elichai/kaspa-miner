@@ -146,11 +146,16 @@ impl OpenCLGPUWorker {
         use_binary: bool,
         random: &NonceGenEnum,
     ) -> Result<Self, Error> {
-        let name = device.board_name_amd().unwrap_or_else(|_| device.name().unwrap_or_else(|_| "Unknown Device".into()));
+        let name =
+            device.board_name_amd().unwrap_or_else(|_| device.name().unwrap_or_else(|_| "Unknown Device".into()));
         info!("{}: Using OpenCL", name);
-        let version = device.version().unwrap_or_else(|_|"unkown version".into());
-        info!("{}: Device supports {} with extensions: {}", name, version, device.extensions().unwrap_or_else(|_| "NA".into()));
-
+        let version = device.version().unwrap_or_else(|_| "unkown version".into());
+        info!(
+            "{}: Device supports {} with extensions: {}",
+            name,
+            version,
+            device.extensions().unwrap_or_else(|_| "NA".into())
+        );
 
         let chosen_workload = match is_absolute {
             true => workload as usize,
