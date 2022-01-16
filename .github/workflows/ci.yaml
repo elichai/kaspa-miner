@@ -53,6 +53,12 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v2
 
+      - name: Fix LibOpenCL on Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt update
+          sudo apt install ocl-icd-opencl-dev -y
+
       - name: Fix CRLF on Windows
         if: runner.os == 'Windows'
         run: git config --global core.autocrlf false
@@ -125,6 +131,12 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
+
+      - name: Fix LibOpenCL on Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt update
+          sudo apt install ocl-icd-opencl-dev -y
 
       - name: Fix CRLF on Windows
         if: runner.os == 'Windows'
