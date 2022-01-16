@@ -21,7 +21,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt update
-          sudo apt install ocl-icd-opencl-dev 
+          sudo apt install ocl-icd-opencl-dev -y
 
       - name: Check out code into the Go module directory
         uses: actions/checkout@v2
@@ -82,6 +82,59 @@ jobs:
           echo "archive=${asset_name}" >> $GITHUB_ENV
           echo "asset_name=${asset_name}" >> $GITHUB_ENV
 
+
+      - name: Upload release asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: "./${{ env.archive }}"
+          asset_name: "${{ env.asset_name }}"
+          asset_content_type: application/zip
+
+  intergrations:
+    runs-on: ubuntu-18.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # Build gnu-linux on ubuntu-18.04 and musl on ubuntu latest
+        itegration: [ hiveos ]
+    name: Integrating, ${{ matrix.itegration }}
+    steps:
+      - name: Fix LibOpenCL on Linux
+        run: |
+          sudo apt update
+          sudo apt install ocl-icd-opencl-dev -y
+
+      - name: Check out code into the module directory
+        uses: actions/checkout@v2
+
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Install CUDA Linux
+        if: runner.os == 'Linux'
+        uses: tmrlvi/cuda-toolkit@master
+        with:
+          cuda: '11.2.2'
+
+      - name: Build ${{ matrix.itegration }} Script
+        run: |
+          cargo build --target=x86_64-unknown-linux-gnu --release --all
+          binary_name="kaspa-miner-${{ github.event.release.tag_name }}-linux-gnu-amd64"
+          asset_name="kaspa-miner-${{ matrix.itegration }}"
+          strip ./target/x86_64-unknown-linux-gnu/release/kaspa-miner
+          mkdir ${asset_name}
+          mv ./target/x86_64-unknown-linux-gnu/release/kaspa-miner ${asset_name}/${binary_name}
+          mv ./target/x86_64-unknown-linux-gnu/release/libkaspa*.so ${asset_name}/
+          bash integrations/${{ matrix.itegration }}/build.sh "${{ github.event.release.tag_name }}" "${binary_name}" "${asset_name}" 
+          echo "archive=${asset_name}.tgz" >> $GITHUB_ENV
+          echo "asset_name=${asset_name}.tgz" >> $GITHUB_ENV
 
       - name: Upload release asset
         uses: actions/upload-release-asset@v1
