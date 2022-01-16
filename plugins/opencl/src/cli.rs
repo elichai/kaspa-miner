@@ -34,8 +34,8 @@ pub struct OpenCLOpt {
     pub opencl_workload_absolute: bool,
     #[clap(long = "opencl-enable", help = "Enable opencl, and take all devices of the chosen platform")]
     pub opencl_enable: bool,
-    #[clap(long = "opencl-no-amd-binary", help = "Disable fetching of precompiled AMD kernel (if exists)")]
-    pub opencl_no_amd_binary: bool,
+    #[clap(long = "opencl-amd-binary", help = "Disable fetching of precompiled AMD kernel (if exists)")]
+    pub opencl_amd_binary: bool,
     #[clap(
         long = "experimental-amd",
         help = "Uses SMID instructions in AMD. Miner will crash if instruction is not supported"
@@ -44,7 +44,7 @@ pub struct OpenCLOpt {
     #[clap(
         long = "nonce-gen",
         help = "The random method used to generate nonces. Options: (i) xoshiro - each thread in GPU will have its own random state, creating a (pseudo-)independent xoshiro sequence (ii) lean - each GPU will have a single random nonce, and each GPU thread will work on nonce + thread id.",
-        default_value = "lean"
+        default_value = "xoshiro"
     )]
     pub nonce_gen: NonceGenEnum,
 }

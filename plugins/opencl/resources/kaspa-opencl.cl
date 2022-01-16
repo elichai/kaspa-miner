@@ -192,7 +192,7 @@ uint32_t STATIC inline amul4bit(constant uint32_t packed_vec1[32], uint32_t pack
     for (int i=0; i<QUARTER_MATRIX_SIZE; i++) {
         #if __PLATFORM__ == NVIDIA_CUDA && (__COMPUTE_MAJOR__ > 6 || (__COMPUTE_MAJOR__ == 6 && __COMPUTE_MINOR__ >= 1))
         asm("dp4a.u32.u32" " %0, %1, %2, %3;": "=r" (res): "r" (packed_vec1[i]), "r" (packed_vec2[i]), "r" (res));
-        #elif (__FORCE_AMD_V_DOT4_U32_U8__ == 1) || ((__GFXIP_MAJOR__ == 9) && (__GFXIP_MINOR__ == 6 || __GFXIP_MINOR__ == 8)) || ((__GFXIP_MAJOR__ == 10) && (__GFXIP_MINOR__ == 11 || __GFXIP_MINOR__ == 12 || __GFXIP_MINOR__ >= 30)) || __GFXIP_MAJOR__ > 10
+        #elif (__FORCE_AMD_V_DOT4_U32_U8__ == 1) || ((__GFXIP_MAJOR__ == 9) && (__GFXIP_MINOR__ == 6 || __GFXIP_MINOR__ == 8)) || ((__GFXIP_MAJOR__ == 10) && (__GFXIP_MINOR__ == 11 || __GFXIP_MINOR__ == 12 || __GFXIP_MINOR__ >= 3)) || __GFXIP_MAJOR__ > 10
         __asm__("v_dot4_u32_u8" " %0, %1, %2, %3;": "=v" (res): "r" (packed_vec1[i]), "r" (packed_vec2[i]), "r" (res));
         #else
         res += ((constant char4 *)packed_vec1)[i].x*((char4 *)packed_vec2)[i].x;
