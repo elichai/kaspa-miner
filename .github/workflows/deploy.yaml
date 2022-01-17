@@ -76,11 +76,14 @@ jobs:
       - name: Build on MacOS
         if: matrix.os == 'macos-latest'
         run: |
-          cargo build --target=x86_64-apple-darwin --release -p kaspa-miner -p kaspaopencl
+          RUSTFLAGS="-framework OpenCL" cargo build --target=x86_64-apple-darwin --release -p kaspa-miner -p kaspaopencl
           asset_name="kaspa-miner-${{ github.event.release.tag_name }}-osx-amd64"
-          mv ./target/x86_64-apple-darwin/release/kaspa-miner ${asset_name}
-          echo "archive=${asset_name}" >> $GITHUB_ENV
-          echo "asset_name=${asset_name}" >> $GITHUB_ENV
+          mkdir ${asset_name}
+          mv ./target/x86_64-apple-darwin/release/kaspa-miner ${asset_name}/${asset_name}
+          mv ./target/x86_64-apple-darwin/release/libkaspa*.so ${asset_name}/
+          tar czvf ${asset_name}.tgz ${asset_name}
+          echo "archive=${asset_name}.tgz" >> $GITHUB_ENV
+          echo "asset_name=${asset_name}.tgz" >> $GITHUB_ENV
 
 
       - name: Upload release asset
@@ -129,10 +132,10 @@ jobs:
           binary_name="kaspa-miner-${{ github.event.release.tag_name }}-linux-gnu-amd64"
           asset_name="kaspa-miner-${{ matrix.itegration }}"
           strip ./target/x86_64-unknown-linux-gnu/release/kaspa-miner
-          mkdir ${asset_name}
-          mv ./target/x86_64-unknown-linux-gnu/release/kaspa-miner ${asset_name}/${binary_name}
-          mv ./target/x86_64-unknown-linux-gnu/release/libkaspa*.so ${asset_name}/
-          bash integrations/${{ matrix.itegration }}/build.sh "${{ github.event.release.tag_name }}" "${binary_name}" "${asset_name}" 
+          mkdir kaspa-miner
+          mv ./target/x86_64-unknown-linux-gnu/release/kaspa-miner kaspa-miner/${binary_name}
+          mv ./target/x86_64-unknown-linux-gnu/release/libkaspa*.so kaspa-miner/
+          bash integrations/${{ matrix.itegration }}/build.sh "${{ github.event.release.tag_name }}" "${binary_name}" kaspa-miner 
           echo "archive=${asset_name}.tgz" >> $GITHUB_ENV
           echo "asset_name=${asset_name}.tgz" >> $GITHUB_ENV
 
