@@ -204,6 +204,12 @@ impl OpenCLGPUWorker {
                         "",
                     )
                     .unwrap_or_else(|_| panic!("{}::Program::create_and_build_from_binary failed", name)),
+                    "gfx1010" => Program::create_and_build_from_binary(
+                        &context,
+                        &[include_bytes!("../resources/bin/gfx1010_kaspa-opencl.bin")],
+                        "",
+                    )
+                    .unwrap_or_else(|_| panic!("{}::Program::create_and_build_from_binary failed", name)),
                     "gfx1011" => Program::create_and_build_from_binary(
                         &context,
                         &[include_bytes!("../resources/bin/gfx1011_kaspa-opencl.bin")],
@@ -381,6 +387,15 @@ fn from_source(context: &Context, device: &Device, options: &str) -> Result<Prog
 
     compile_options += &match device.gfxip_minor_amd() {
         Ok(minor) => format!("-D __GFXIP_MINOR__={} ", minor),
+        Err(_) => String::new(),
+    };
+
+    // Hack to recreate the AMD flags
+    compile_options += &match device.pcie_id_amd() {
+        Ok(_) => {
+            let device_name = device.name().unwrap_or_else(|_| "Unknown".into());
+            format!("-D OPENCL_PLATFORM_AMD -D __{}__", device_name)
+        },
         Err(_) => String::new(),
     };
 
