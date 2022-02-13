@@ -3,7 +3,7 @@ use crate::Error;
 use kaspa_miner::xoshiro256starstar::Xoshiro256StarStar;
 use kaspa_miner::Worker;
 use log::info;
-use opencl3::command_queue::{CommandQueue, CL_QUEUE_PROFILING_ENABLE};
+use opencl3::command_queue::{CommandQueue, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE};
 use opencl3::context::Context;
 use opencl3::device::Device;
 use opencl3::event::{release_event, retain_event, wait_for_events};
@@ -38,6 +38,7 @@ pub struct OpenCLGPUWorker {
     target: Buffer<cl_ulong>,
 
     events: Vec<cl_event>,
+    experimental_amd: bool,
 }
 
 impl Worker for OpenCLGPUWorker {
@@ -47,8 +48,10 @@ impl Worker for OpenCLGPUWorker {
     }
 
     fn load_block_constants(&mut self, hash_header: &[u8; 72], matrix: &[[u16; 64]; 64], target: &[u64; 4]) {
-        let cl_uchar_matrix = matrix.iter().flat_map(|row| row.map(|v| v as cl_uchar)).collect::<Vec<cl_uchar>>();
-
+        let cl_uchar_matrix = match self.experimental_amd {
+            true => matrix.iter().flat_map(|row| row.chunks(2).map(|v| ((v[0] << 4) | v[1]) as cl_uchar)).collect::<Vec<cl_uchar>>(),
+            false => matrix.iter().flat_map(|row| row.map(|v| v as cl_uchar)).collect::<Vec<cl_uchar>>(),
+        };
         self.queue
             .enqueue_write_buffer(&mut self.final_nonce, CL_BLOCKING, 0, &[0], &[])
             .map_err(|e| e.to_string())
@@ -88,10 +91,15 @@ impl Worker for OpenCLGPUWorker {
                 .wait()
                 .unwrap();
         }
+        let random_type: cl_uchar = match self.random {
+            NonceGenEnum::Lean => 0,
+            NonceGenEnum::Xoshiro => 1
+        };
         let kernel_event = ExecuteKernel::new(&self.heavy_hash)
             .set_arg(&self.hash_header)
             .set_arg(&self.matrix)
             .set_arg(&self.target)
+            .set_arg(&random_type)
             .set_arg(&self.random_state)
             .set_arg(&self.final_nonce)
             .set_arg(&self.final_hash)
@@ -172,26 +180,29 @@ impl OpenCLGPUWorker {
         let context_ref = unsafe { Arc::as_ptr(&context).as_ref().unwrap() };
 
         let options = match experimental_amd {
-            true => "-D __FORCE_AMD_V_DOT4_U32_U8__=1 ",
+            // true => "-D __FORCE_AMD_V_DOT4_U32_U8__=1 ",
+            true => "-D __FORCE_AMD_V_DOT8_U32_U4__=1 ",
             false => "",
         };
+
+        let experimental_amd_use = match device.name().unwrap_or_else(|_| "Unknown".into()).to_lowercase().as_str() {
+            "tahiti" => false,
+            "ellesmere" => false,
+            "gfx1010" => false,
+            _ => true,
+        };
+
         let program = match use_binary {
             true => {
                 let device_name = device.name().unwrap_or_else(|_| "Unknown".into()).to_lowercase();
                 info!("{}: Looking for binary for {}", name, device_name);
                 match device_name.as_str() {
-                    "tahiti" => Program::create_and_build_from_binary(
-                        &context,
-                        &[include_bytes!("../resources/bin/tahiti_kaspa-opencl.bin")],
-                        "",
-                    )
-                    .unwrap_or_else(|_| panic!("{}::Program::create_and_build_from_binary failed", name)),
                     "ellesmere" => Program::create_and_build_from_binary(
                         &context,
                         &[include_bytes!("../resources/bin/ellesmere_kaspa-opencl.bin")],
                         "",
                     )
-                    .unwrap_or_else(|_| panic!("{}::Program::create_and_build_from_binary failed", name)),
+                    .unwrap_or_else(|e| panic!("{}::Program::create_and_build_from_binary failed: {}", name, String::from(e))),
                     "gfx906" => Program::create_and_build_from_binary(
                         &context,
                         &[include_bytes!("../resources/bin/gfx906_kaspa-opencl.bin")],
@@ -239,30 +250,25 @@ impl OpenCLGPUWorker {
                         &[include_bytes!("../resources/bin/gfx1032_kaspa-opencl.bin")],
                         "",
                     )
-                    .unwrap_or_else(|_| panic!("{}::Program::create_and_build_from_binary failed", name)),
+                    .unwrap_or_else(|e| panic!("{}::Program::create_and_build_from_binary failed: {}", name, e.to_string())),
                     other => {
-                        info!(
-                            "{}: Found device {} without prebuilt binary. Trying to building from source.",
+                        panic!(
+                            "{}: Found device {} without prebuilt binary. Trying to run without --opencl-amd-binary.",
                             name, other
                         );
-                        from_source(&context, &device, options)
-                            .unwrap_or_else(|_| panic!("{}::Program::create_and_build_from_binary failed", name))
                     }
                 }
             }
             false => from_source(&context, &device, options)
-                .unwrap_or_else(|_| panic!("{}::Program::create_and_build_from_binary failed", name)),
+                .unwrap_or_else(|e| panic!("{}::Program::create_and_build_from_binary failed: {}", name, e.to_string())),
         };
+        info!("Kernels: {:?}", program.kernel_names());
+        let heavy_hash = Kernel::create(&program, "heavy_hash")
+            .unwrap_or_else(|_| panic!("{}::Kernel::create failed", name));
 
-        let heavy_hash = match random {
-            NonceGenEnum::Lean => Kernel::create(&program, "heavy_hash_lean")
-                .unwrap_or_else(|_| panic!("{}::Kernel::create failed", name)),
-            NonceGenEnum::Xoshiro => Kernel::create(&program, "heavy_hash_xoshiro")
-                .unwrap_or_else(|_| panic!("{}::Kernel::create failed", name)),
-        };
 
         let queue =
-            CommandQueue::create_with_properties(&context, context.default_device(), CL_QUEUE_PROFILING_ENABLE, 0)
+            CommandQueue::create_with_properties(&context, device.id(), CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, 0)
                 .unwrap_or_else(|_| panic!("{}::CommandQueue::create_with_properties failed", name));
 
         let final_nonce = Buffer::<cl_ulong>::create(context_ref, CL_MEM_READ_WRITE, 1, ptr::null_mut())
@@ -344,6 +350,7 @@ impl OpenCLGPUWorker {
             matrix,
             target,
             events: Vec::<cl_event>::new(),
+            experimental_amd: ((experimental_amd | use_binary) & experimental_amd_use),
         })
     }
 }
@@ -358,16 +365,15 @@ fn from_source(context: &Context, device: &Device, options: &str) -> Result<Prog
         info!("Compiling with OpenCl 2");
         compile_options += CL_STD_2_0;
     }
-
     compile_options += &match Platform::new(device.platform().unwrap()).name() {
         Ok(name) => format!(
-            "-D __PLATFORM__={} ",
+            "-D{} ",
             name.chars()
                 .map(|c| match c.is_ascii_alphanumeric() {
                     true => c,
                     false => '_',
                 })
-                .collect::<String>()
+                .collect::<String>().to_uppercase()
         ),
         Err(_) => String::new(),
     };
@@ -380,13 +386,12 @@ fn from_source(context: &Context, device: &Device, options: &str) -> Result<Prog
         Err(_) => String::new(),
     };
 
-    compile_options += &match device.gfxip_major_amd() {
-        Ok(major) => format!("-D __GFXIP_MAJOR__={} ", major),
-        Err(_) => String::new(),
-    };
-
-    compile_options += &match device.gfxip_minor_amd() {
-        Ok(minor) => format!("-D __GFXIP_MINOR__={} ", minor),
+    // Hack to recreate the AMD flags
+    compile_options += &match device.pcie_id_amd() {
+        Ok(_) => {
+            let device_name = device.name().unwrap_or_else(|_| "Unknown".into()).to_lowercase();
+            format!("-D OPENCL_PLATFORM_AMD -D __{}__", device_name)
+        },
         Err(_) => String::new(),
     };
 

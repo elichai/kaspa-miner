@@ -50,7 +50,6 @@ __device__ static inline void keccakf(void* state) {
   uint64_t t = 0;
   uint8_t x, y;
 
-  //#pragma unroll
   for (int i = 0; i < 24; i++) {
     // Theta
     FOR5(x, 1,
@@ -82,36 +81,27 @@ __device__ static inline void keccakf(void* state) {
 /******** The FIPS202-defined functions. ********/
 
 /*** Some helper macros. ***/
-
-#define _(S) do { S } while (0)
-#define FOR(i, ST, L, S) \
-  _(for (size_t i = 0; i < L; i += ST) { S; })
-#define mkapply_ds(NAME, S)                                          \
-  __device__ static inline void NAME(uint8_t* dst,                              \
-                          const uint8_t* src,                        \
-                          size_t len) {                              \
-    FOR(i, 1, len, S);                                               \
-  }
-
-mkapply_ds(xorin, dst[i] ^= src[i])  // xorin
-
 #define P keccakf
 #define Plen 200
 
 
 /** The sponge-based hash construction. **/
-__device__ __forceinline__ static int hash(
+__device__ __forceinline__ static void hash(
                        const uint8_t initP[Plen],
                        uint8_t* out,
-                       const uint8_t* in, size_t inlen) {
+                       const uint8_t* in) {
   uint8_t a[Plen] = {0};
-  memcpy(a, initP, Plen);
-  // Xor in the last block.
-  xorin(a, in, inlen);
+
+  #pragma unroll
+  for (int i=0; i<10; i++) ((uint64_t *)a)[i] = ((uint64_t *)initP)[i] ^ ((uint64_t *)in)[i];
+  #pragma unroll
+  for (int i=10; i<25; i++) ((uint64_t *)a)[i] = ((uint64_t *)initP)[i];
+
   // Apply P
   P(a);
   // Squeeze output.
-  memcpy(out, a, 32);
-  return 0;
+  #pragma unroll
+  for (int i=0; i<4; i++) ((uint64_t *)out)[i] = ((uint64_t *)a)[i];
+
 }
 
