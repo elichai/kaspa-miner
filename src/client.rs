@@ -3,6 +3,7 @@ use crate::proto::rpc_client::RpcClient;
 use crate::proto::{GetBlockTemplateRequestMessage, GetInfoRequestMessage, KaspadMessage};
 use crate::{miner::MinerManager, Error};
 use log::{error, info, warn};
+use rand::{RngCore, thread_rng};
 use tokio::sync::mpsc::{self, error::SendError, Sender};
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{transport::Channel as TonicChannel, Streaming};
@@ -16,7 +17,7 @@ pub struct KaspadHandler {
     mine_when_not_synced: bool,
     devfund_address: Option<String>,
     devfund_percent: u16,
-    block_template_ctr: u64,
+    block_template_ctr: u16,
 }
 
 impl KaspadHandler {
@@ -38,7 +39,7 @@ impl KaspadHandler {
             mine_when_not_synced,
             devfund_address: None,
             devfund_percent: 0,
-            block_template_ctr: 0,
+            block_template_ctr: (thread_rng().next_u64() % 10_000u64) as u16,
         })
     }
 
@@ -53,12 +54,13 @@ impl KaspadHandler {
 
     pub async fn client_get_block_template(&mut self) -> Result<(), SendError<KaspadMessage>> {
         let pay_address = match &self.devfund_address {
-            Some(devfund_address) if (self.block_template_ctr % 10_000) as u16 <= self.devfund_percent => {
+            Some(devfund_address) if self.block_template_ctr <= self.devfund_percent => {
                 devfund_address.clone()
             }
             _ => self.miner_address.clone(),
         };
         self.block_template_ctr += 1;
+        self.block_template_ctr %= 10_000;
         self.client_send(GetBlockTemplateRequestMessage { pay_address }).await
     }
 

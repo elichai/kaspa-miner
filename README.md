@@ -1,10 +1,11 @@
 # Kaspa-miner
-[![Build status](https://github.com/elichai/kaspa-miner/workflows/ci/badge.svg)](https://github.com/elichai/kaspa-miner/actions)
+[![Build status](https://github.com/tmrlvi/kaspa-miner/workflows/ci/badge.svg)](https://github.com/tmrlvi/kaspa-miner/actions)
 [![Latest version](https://img.shields.io/crates/v/kaspa-miner.svg)](https://crates.io/crates/kaspa-miner)
 ![License](https://img.shields.io/crates/l/kaspa-miner.svg)
 [![dependency status](https://deps.rs/repo/github/elichai/kaspa-miner/status.svg)](https://deps.rs/repo/github/elichai/kaspa-miner)
 
-A Rust binary for file encryption to multiple participants. 
+[![Discord](https://img.shields.io/badge/Discord-%237289DA.svg?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/kS3SK5F36R)
+[![Telegram](https://img.shields.io/badge/Telegram-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/Kaspaenglish)
 
 
 ## Installation
@@ -99,7 +100,7 @@ A miner that wants to mine a percentage into the dev-fund can pass the following
 and can pass `--devfund-precent=XX.YY` to mine only XX.YY% of the blocks into the devfund (passing `--devfund` without specifying a percent will default to 1%)
 
 **This version automatically sets the devfund donation to the community designated address. 
-To turn it off, run `--devfund-precent=0`**
+Due to community decision, the minimum amount in the precompiled binaries is 2%**
 
 # Donation Addresses
 
