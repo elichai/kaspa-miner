@@ -5,7 +5,7 @@ use kaspa_miner::Worker;
 use log::info;
 use opencl3::command_queue::{CommandQueue, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE};
 use opencl3::context::Context;
-use opencl3::device::{CL_DEVICE_IL_VERSION, Device};
+use opencl3::device::Device;
 use opencl3::event::{release_event, retain_event, wait_for_events};
 use opencl3::kernel::{ExecuteKernel, Kernel};
 use opencl3::memory::{Buffer, ClMem, CL_MAP_WRITE, CL_MEM_READ_ONLY, CL_MEM_READ_WRITE, CL_MEM_WRITE_ONLY};
