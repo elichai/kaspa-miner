@@ -568,7 +568,7 @@ checksum = "b71991ff56294aa922b450139ee08b3bfc70982c6b2c7562771375cf73542dd4"
 
 [[package]]
 name = "kaspa-miner"
-version = "0.2.1-GPU-0.2"
+version = "0.2.1-GPU-0.4b"
 dependencies = [
  "blake2b_simd",
  "cc",

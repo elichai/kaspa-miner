@@ -390,16 +390,7 @@ fn from_source(context: &Context, device: &Device, options: &str) -> Result<Prog
     compile_options += &match device.pcie_id_amd() {
         Ok(_) => {
             let device_name = device.name().unwrap_or_else(|_| "Unknown".into()).to_lowercase();
-            format!("-D OPENCL_PLATFORM_AMD -D __{}__", device_name)
-        },
-        Err(_) => String::new(),
-    };
-
-    // Hack to recreate the AMD flags
-    compile_options += &match device.pcie_id_amd() {
-        Ok(_) => {
-            let device_name = device.name().unwrap_or_else(|_| "Unknown".into());
-            format!("-D OPENCL_PLATFORM_AMD -D __{}__", device_name)
+            format!("-D OPENCL_PLATFORM_AMD -D __{}__ ", device_name)
         },
         Err(_) => String::new(),
     };
