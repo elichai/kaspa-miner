@@ -56,13 +56,13 @@ OPTIONS:
     -a, --mining-address <MINING_ADDRESS>      The Kaspa address for the miner reward
         --cuda-device <CUDA_DEVICE>            Which CUDA GPUs to use [default: all]
         --cuda-disable                         Disable cuda workers
-        --cuda-workload <CUDA_WORKLOAD>        Ratio of nonces to GPU possible parrallel run [defualt: 16]
+        --cuda-no-blocking-sync                Actively wait for GPU result. Increases CPU usage, but removes delays
+                                               that might result in red blocks. Can have lower workload.
+        --cuda-workload <CUDA_WORKLOAD>        Ratio of nonces to GPU possible parrallel run [default: 64]
         --cuda-workload-absolute               The values given by workload are not ratio, but absolute number of nonces
                                                [default: false]
     -d, --debug                                Enable debug logging level
-        --devfund <DEVFUND_ADDRESS>            Mine a percentage of the blocks to the Kaspa devfund [default:
-                                               kaspa:pzhh76qc82wzduvsrd9xh4zde9qhp0xc8rl7qu2mvl2e42uvdqt75zrcgpm00]
-        --devfund-percent <DEVFUND_PERCENT>    The percentage of blocks to send to the devfund [default: 1]
+        --devfund-percent <DEVFUND_PERCENT>    The percentage of blocks to send to the devfund (minimum 2%) [default: 2]
         --experimental-amd                     Uses SMID instructions in AMD. Miner will crash if instruction is not
                                                supported
     -h, --help                                 Print help information
@@ -73,11 +73,11 @@ OPTIONS:
                                                (pseudo-)independent xoshiro sequence (ii) lean - each GPU will have a
                                                single random nonce, and each GPU thread will work on nonce + thread id.
                                                [default: lean]
+        --opencl-amd-binary                    Disable fetching of precompiled AMD kernel (if exists)
         --opencl-device <OPENCL_DEVICE>        Which OpenCL GPUs to use on a specific platform
         --opencl-enable                        Enable opencl, and take all devices of the chosen platform
-        --opencl-no-amd-binary                 Disable fetching of precompiled AMD kernel (if exists)
         --opencl-platform <OPENCL_PLATFORM>    Which OpenCL platform to use (limited to one per executable)
-        --opencl-workload <OPENCL_WORKLOAD>    Ratio of nonces to GPU possible parrallel run in OpenCL [defualt: 512]
+        --opencl-workload <OPENCL_WORKLOAD>    Ratio of nonces to GPU possible parrallel run in OpenCL [default: 512]
         --opencl-workload-absolute             The values given by workload are not ratio, but absolute number of nonces
                                                in OpenCL [default: false]
     -p, --port <PORT>                          Kaspad port [default: Mainnet = 16111, Testnet = 16211]
@@ -95,9 +95,8 @@ This will run the miner on all the available CPU cores.
 # Devfund
 
 The devfund is a fund managed by the Kaspa community in order to fund Kaspa development <br>
-A miner that wants to mine a percentage into the dev-fund can pass the following flags: <br>
-`kaspa-miner --mining-address= XXX --devfund=kaspa:precqv0krj3r6uyyfa36ga7s0u9jct0v4wg8ctsfde2gkrsgwgw8jgxfzfc98` <br>
-and can pass `--devfund-precent=XX.YY` to mine only XX.YY% of the blocks into the devfund (passing `--devfund` without specifying a percent will default to 1%)
+A miner that wants to mine higher percentage into the dev-fund can pass the following flags: <br>
+`--devfund-precent=XX.YY` to mine only XX.YY% of the blocks into the devfund.
 
 **This version automatically sets the devfund donation to the community designated address. 
 Due to community decision, the minimum amount in the precompiled binaries is 2%**
