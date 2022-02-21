@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::proto::{KaspadMessage, RpcBlock};
+use crate::proto::RpcBlock;
 use crate::{pow, watch, Error};
 use log::{error, info, warn};
 use rand::{thread_rng, RngCore};
@@ -19,7 +19,7 @@ type MinerHandler = std::thread::JoinHandle<Result<(), Error>>;
 pub struct MinerManager {
     handles: Vec<MinerHandler>,
     block_channel: watch::Sender<Option<pow::State>>,
-    send_channel: Sender<KaspadMessage>,
+    send_channel: Sender<RpcBlock>,
     logger_handle: JoinHandle<()>,
     is_synced: bool,
     hashes_tried: Arc<AtomicU64>,
@@ -41,7 +41,7 @@ pub fn get_num_cpus(n_cpus: Option<u16>) -> u16 {
 const LOG_RATE: Duration = Duration::from_secs(10);
 
 impl MinerManager {
-    pub fn new(send_channel: Sender<KaspadMessage>, n_cpus: Option<u16>, manager: &PluginManager) -> Self {
+    pub fn new(send_channel: Sender<RpcBlock>, n_cpus: Option<u16>, manager: &PluginManager) -> Self {
         let hashes_tried = Arc::new(AtomicU64::new(0));
         let (send, recv) = watch::channel(None);
         let mut handles =
@@ -67,7 +67,7 @@ impl MinerManager {
     }
 
     fn launch_cpu_threads(
-        send_channel: Sender<KaspadMessage>,
+        send_channel: Sender<RpcBlock>,
         hashes_tried: Arc<AtomicU64>,
         work_channel: watch::Receiver<Option<pow::State>>,
         n_cpus: Option<u16>,
@@ -79,7 +79,7 @@ impl MinerManager {
     }
 
     fn launch_gpu_threads(
-        send_channel: Sender<KaspadMessage>,
+        send_channel: Sender<RpcBlock>,
         hashes_tried: Arc<AtomicU64>,
         work_channel: watch::Receiver<Option<pow::State>>,
         manager: &PluginManager,
@@ -120,7 +120,7 @@ impl MinerManager {
 
     #[allow(unreachable_code)]
     fn launch_gpu_miner(
-        send_channel: Sender<KaspadMessage>,
+        send_channel: Sender<RpcBlock>,
         mut block_channel: watch::Receiver<Option<pow::State>>,
         hashes_tried: Arc<AtomicU64>,
         spec: Box<dyn WorkerSpec>,
@@ -155,7 +155,7 @@ impl MinerManager {
                             let block_hash = block
                                 .block_hash()
                                 .expect("We just got it from the state, we should be able to hash it");
-                            match send_channel.blocking_send(KaspadMessage::submit_block(block)) {
+                            match send_channel.blocking_send(block) {
                                 Ok(()) => info!("Found a block: {:x}", block_hash),
                                 Err(e) => error!("Failed submitting block: {:x} ({})", block_hash, e.to_string()),
                             };
@@ -219,7 +219,7 @@ impl MinerManager {
 
     #[allow(unreachable_code)]
     pub fn launch_cpu_miner(
-        send_channel: Sender<KaspadMessage>,
+        send_channel: Sender<RpcBlock>,
         mut block_channel: watch::Receiver<Option<pow::State>>,
         hashes_tried: Arc<AtomicU64>,
     ) -> MinerHandler {
@@ -238,7 +238,7 @@ impl MinerManager {
                     if let Some(block) = state_ref.generate_block_if_pow(nonce.0) {
                         let block_hash =
                             block.block_hash().expect("We just got it from the state, we should be able to hash it");
-                        send_channel.blocking_send(KaspadMessage::submit_block(block))?;
+                        send_channel.blocking_send(block)?;
                         info!("Found a block: {:x}", block_hash);
                         state = None;
                     }

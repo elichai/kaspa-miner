@@ -7,13 +7,14 @@ use std::ffi::OsStr;
 
 use clap::{App, FromArgMatches, IntoApp};
 use kaspa_miner::PluginManager;
-use log::{info, warn};
+use log::{error, info, warn};
 use std::fs;
 
 use crate::cli::Opt;
-use crate::client::KaspadHandler;
+use crate::client::Client;
+use crate::client::grpc::KaspadHandler;
+use crate::client::stratum::StratumHandler;
 use crate::miner::MinerManager;
-use crate::proto::NotifyBlockAddedRequestMessage;
 use crate::target::Uint256;
 
 mod cli;
@@ -51,6 +52,20 @@ fn filter_plugins(dirname: &str) -> Vec<String> {
     }
 }
 
+async fn get_client(kaspad_address: String, mining_address:String, mine_when_not_synced: bool) -> Result<Box<dyn Client + 'static>, Error> {
+    if kaspad_address.starts_with("stratum://") {
+        let (_schema, address) = kaspad_address.split_once("://").unwrap();
+        Ok(StratumHandler::connect(address.to_string().clone(), mining_address.clone(), mine_when_not_synced)
+            .await?)
+    } else if kaspad_address.starts_with("grpc://") {
+        Ok(KaspadHandler::connect(kaspad_address.clone(), mining_address.clone(), mine_when_not_synced)
+            .await?)
+    } else {
+        Err("Did not recognize pool/grpc address schema".into())
+    }
+
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let mut path = current_exe().unwrap_or_default();
@@ -68,9 +83,8 @@ async fn main() -> Result<(), Error> {
     info!("Found plugins: {:?}", plugins);
 
     loop {
-        let mut client =
-            KaspadHandler::connect(opt.kaspad_address.clone(), opt.mining_address.clone(), opt.mine_when_not_synced)
-                .await?;
+        let mut client  = get_client(opt.kaspad_address.clone(), opt.mining_address.clone(), opt.mine_when_not_synced).await?;
+
         if opt.devfund_percent > 0 {
             client.add_devfund(opt.devfund_address.clone(), opt.devfund_percent);
             info!(
@@ -80,10 +94,12 @@ async fn main() -> Result<(), Error> {
                 opt.devfund_address
             );
         }
-        client.client_send(NotifyBlockAddedRequestMessage {}).await?;
-        client.client_get_block_template().await?;
-        let mut miner_manager = MinerManager::new(client.send_channel.clone(), opt.num_threads, &plugin_manager);
-        client.listen(&mut miner_manager).await?;
+        client.register().await?;
+        let mut miner_manager = MinerManager::new(client.get_send_channel().clone(), opt.num_threads, &plugin_manager);
+        match client.listen(&mut miner_manager).await {
+            Ok(()) => warn!("Client closed gracefully?"),
+            Err(e) => error!("Client closed with error {:?}", e)
+        };
         warn!("Disconnected from kaspad, retrying");
     }
 }

@@ -70,7 +70,7 @@ impl Opt {
             self.kaspad_address = "127.0.0.1".to_string();
         }
 
-        if !self.kaspad_address.starts_with("grpc://") {
+        if !self.kaspad_address.contains("://") {
             IpAddr::from_str(&self.kaspad_address)?;
             let port = self.port();
             self.kaspad_address = format!("grpc://{}:{}", self.kaspad_address, port);
