@@ -311,6 +311,8 @@ void STATIC inline _amul4bit(__constant uchar4 packed_vec1[32], uchar4 packed_ve
 #define SWAP4( x ) as_uint( as_uchar4( x ).wzyx )
 
 kernel void heavy_hash(
+    const ulong nonce_mask,
+    const ulong nonce_fixed,
     __constant const ulong hash_header[9],
     __constant const uint8_t matrix[4096],
     __constant const ulong4 *target,
@@ -337,6 +339,7 @@ kernel void heavy_hash(
       default:
         nonce = xoshiro256_next(((global ulong4 *)random_state) + nonceId);
     }
+    nonce = (nonce & nonce_mask) | nonce_fixed;
 
     int64_t buffer[10];
 

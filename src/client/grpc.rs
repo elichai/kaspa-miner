@@ -1,6 +1,8 @@
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU16, Ordering};
 use crate::proto::kaspad_message::Payload;
 use crate::proto::rpc_client::RpcClient;
-use crate::proto::{GetBlockTemplateRequestMessage, GetInfoRequestMessage, KaspadMessage, NotifyBlockAddedRequestMessage, RpcBlock};
+use crate::proto::{GetBlockTemplateRequestMessage, GetInfoRequestMessage, KaspadMessage, NotifyBlockAddedRequestMessage};
 use crate::{miner::MinerManager, Error};
 use log::{error, info, warn};
 use rand::{RngCore, thread_rng};
@@ -11,6 +13,8 @@ use crate::client::Client;
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use tokio_util::sync::PollSender;
+use crate::pow::BlockSeed;
+use crate::pow::BlockSeed::{FullBlock, PartialBlock};
 
 
 #[allow(dead_code)]
@@ -22,7 +26,7 @@ pub struct KaspadHandler {
     mine_when_not_synced: bool,
     devfund_address: Option<String>,
     devfund_percent: u16,
-    block_template_ctr: u16,
+    block_template_ctr: Arc<AtomicU16>,
 }
 
 #[async_trait(?Send)]
@@ -48,19 +52,24 @@ impl Client for KaspadHandler {
         Ok(())
     }
 
-    fn get_send_channel(&self) -> Sender<RpcBlock> {
+    fn get_send_channel(&self) -> Sender<BlockSeed> {
         // KaspadMessage::submit_block(block)
-        let (send, recv) = mpsc::channel(1);
+        let (send, recv) = mpsc::channel::<BlockSeed>(1);
         let forwarding = self.send_channel.clone();
         tokio::spawn(async move {
-            ReceiverStream::new(recv).map(|block| KaspadMessage::submit_block(block)).map(Ok).forward(PollSender::new(forwarding)).await
+            ReceiverStream::new(recv).map(|block_seed| {
+                match block_seed {
+                    FullBlock( block ) => KaspadMessage::submit_block(block),
+                    PartialBlock { .. } => unreachable!("All blocks sent here should have arrived from here")
+                }
+            }).map(Ok).forward(PollSender::new(forwarding)).await
         });
         send
     }
 }
 
 impl KaspadHandler {
-    pub async fn connect<D>(address: D, miner_address: String, mine_when_not_synced: bool) -> Result<Box<Self>, Error>
+    pub async fn connect<D>(address: D, miner_address: String, mine_when_not_synced: bool, block_template_ctr: Option<Arc<AtomicU16>>) -> Result<Box<Self>, Error>
         where
             D: std::convert::TryInto<tonic::transport::Endpoint>,
             D::Error: Into<Error>,
@@ -78,7 +87,7 @@ impl KaspadHandler {
             mine_when_not_synced,
             devfund_address: None,
             devfund_percent: 0,
-            block_template_ctr: (thread_rng().next_u64() % 10_000u64) as u16,
+            block_template_ctr: block_template_ctr.unwrap_or(Arc::new(AtomicU16::new((thread_rng().next_u64() % 10_000u64) as u16))),
         }))
     }
 
@@ -88,13 +97,12 @@ impl KaspadHandler {
 
     async fn client_get_block_template(&mut self) -> Result<(), SendError<KaspadMessage>> {
         let pay_address = match &self.devfund_address {
-            Some(devfund_address) if self.block_template_ctr <= self.devfund_percent => {
+            Some(devfund_address) if self.block_template_ctr.load(Ordering::SeqCst) <= self.devfund_percent => {
                 devfund_address.clone()
             }
             _ => self.miner_address.clone(),
         };
-        self.block_template_ctr += 1;
-        self.block_template_ctr %= 10_000;
+        self.block_template_ctr.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |v| Some((v+1) % 10_000)).unwrap();
         self.client_send(GetBlockTemplateRequestMessage { pay_address }).await
     }
 
@@ -102,8 +110,8 @@ impl KaspadHandler {
         match msg {
             Payload::BlockAddedNotification(_) => self.client_get_block_template().await?,
             Payload::GetBlockTemplateResponse(template) => match (template.block, template.is_synced, template.error) {
-                (Some(b), true, None) => miner.process_block(Some(b)).await?,
-                (Some(b), false, None) if self.mine_when_not_synced => miner.process_block(Some(b)).await?,
+                (Some(b), true, None) => miner.process_block(Some(FullBlock(b))).await?,
+                (Some(b), false, None) if self.mine_when_not_synced => miner.process_block(Some(FullBlock(b))).await?,
                 (_, false, None) => miner.process_block(None).await?,
                 (_, _, Some(e)) => warn!("GetTemplate returned with an error: {:?}", e),
                 (None, true, None) => error!("No block and No Error!"),

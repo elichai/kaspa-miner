@@ -63,7 +63,7 @@ impl Uint256 {
 
 impl fmt::LowerHex for Uint256 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.to_le_bytes().iter().try_for_each(|&c| write!(f, "{:02x}", c))
+        self.to_le_bytes().iter().rev().try_for_each(|&c| write!(f, "{:02x}", c))
     }
 }
 

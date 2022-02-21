@@ -9,6 +9,11 @@ use clap::{App, FromArgMatches, IntoApp};
 use kaspa_miner::PluginManager;
 use log::{error, info, warn};
 use std::fs;
+use std::sync::Arc;
+use std::sync::atomic::AtomicU16;
+use std::thread::sleep;
+use std::time::Duration;
+use rand::{RngCore, thread_rng};
 
 use crate::cli::Opt;
 use crate::client::Client;
@@ -52,13 +57,13 @@ fn filter_plugins(dirname: &str) -> Vec<String> {
     }
 }
 
-async fn get_client(kaspad_address: String, mining_address:String, mine_when_not_synced: bool) -> Result<Box<dyn Client + 'static>, Error> {
+async fn get_client(kaspad_address: String, mining_address:String, mine_when_not_synced: bool, block_template_ctr: Arc<AtomicU16>) -> Result<Box<dyn Client + 'static>, Error> {
     if kaspad_address.starts_with("stratum://") {
         let (_schema, address) = kaspad_address.split_once("://").unwrap();
-        Ok(StratumHandler::connect(address.to_string().clone(), mining_address.clone(), mine_when_not_synced)
+        Ok(StratumHandler::connect(address.to_string().clone(), mining_address.clone(), mine_when_not_synced, Some(block_template_ctr.clone()))
             .await?)
     } else if kaspad_address.starts_with("grpc://") {
-        Ok(KaspadHandler::connect(kaspad_address.clone(), mining_address.clone(), mine_when_not_synced)
+        Ok(KaspadHandler::connect(kaspad_address.clone(), mining_address.clone(), mine_when_not_synced, Some(block_template_ctr.clone()))
             .await?)
     } else {
         Err("Did not recognize pool/grpc address schema".into())
@@ -82,8 +87,12 @@ async fn main() -> Result<(), Error> {
     env_logger::builder().filter_level(opt.log_level()).parse_default_env().init();
     info!("Found plugins: {:?}", plugins);
 
+    let block_template_ctr = Arc::new(AtomicU16::new((thread_rng().next_u64() % 10_000u64) as u16));
     loop {
-        let mut client  = get_client(opt.kaspad_address.clone(), opt.mining_address.clone(), opt.mine_when_not_synced).await?;
+        let mut client  = get_client(
+            opt.kaspad_address.clone(), opt.mining_address.clone(),
+            opt.mine_when_not_synced, block_template_ctr.clone()
+        ).await?;
 
         if opt.devfund_percent > 0 {
             client.add_devfund(opt.devfund_address.clone(), opt.devfund_percent);
@@ -101,5 +110,7 @@ async fn main() -> Result<(), Error> {
             Err(e) => error!("Client closed with error {:?}", e)
         };
         warn!("Disconnected from kaspad, retrying");
+        sleep(Duration::from_millis(100));
+        drop(miner_manager);
     }
 }

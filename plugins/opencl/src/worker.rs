@@ -82,7 +82,7 @@ impl Worker for OpenCLGPUWorker {
         }
     }
 
-    fn calculate_hash(&mut self, _nonces: Option<&Vec<u64>>) {
+    fn calculate_hash(&mut self, _nonces: Option<&Vec<u64>>, nonce_mask: u64, nonce_fixed: u64) {
         if self.random == NonceGenEnum::Lean {
             self.queue
                 .enqueue_write_buffer(&mut self.random_state, CL_BLOCKING, 0, &[thread_rng().next_u64()], &[])
@@ -96,6 +96,8 @@ impl Worker for OpenCLGPUWorker {
             NonceGenEnum::Xoshiro => 1
         };
         let kernel_event = ExecuteKernel::new(&self.heavy_hash)
+            .set_arg(&nonce_mask)
+            .set_arg(&nonce_fixed)
             .set_arg(&self.hash_header)
             .set_arg(&self.matrix)
             .set_arg(&self.target)

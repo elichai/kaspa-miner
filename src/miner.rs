@@ -3,7 +3,6 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::proto::RpcBlock;
 use crate::{pow, watch, Error};
 use log::{error, info, warn};
 use rand::{thread_rng, RngCore};
@@ -12,14 +11,15 @@ use tokio::task::{self, JoinHandle};
 use tokio::time::MissedTickBehavior;
 
 use kaspa_miner::{PluginManager, WorkerSpec};
+use crate::pow::BlockSeed;
 
 type MinerHandler = std::thread::JoinHandle<Result<(), Error>>;
 
 #[allow(dead_code)]
 pub struct MinerManager {
     handles: Vec<MinerHandler>,
-    block_channel: watch::Sender<Option<pow::State>>,
-    send_channel: Sender<RpcBlock>,
+    block_channel: Option<watch::Sender<Option<pow::State>>>,
+    send_channel: Sender<BlockSeed>,
     logger_handle: JoinHandle<()>,
     is_synced: bool,
     hashes_tried: Arc<AtomicU64>,
@@ -29,6 +29,7 @@ pub struct MinerManager {
 impl Drop for MinerManager {
     fn drop(&mut self) {
         self.logger_handle.abort();
+        self.block_channel = None; // Force closing of channel
     }
 }
 
@@ -41,7 +42,7 @@ pub fn get_num_cpus(n_cpus: Option<u16>) -> u16 {
 const LOG_RATE: Duration = Duration::from_secs(10);
 
 impl MinerManager {
-    pub fn new(send_channel: Sender<RpcBlock>, n_cpus: Option<u16>, manager: &PluginManager) -> Self {
+    pub fn new(send_channel: Sender<BlockSeed>, n_cpus: Option<u16>, manager: &PluginManager) -> Self {
         let hashes_tried = Arc::new(AtomicU64::new(0));
         let (send, recv) = watch::channel(None);
         let mut handles =
@@ -57,7 +58,7 @@ impl MinerManager {
         }
         Self {
             handles,
-            block_channel: send,
+            block_channel: Some(send),
             send_channel,
             logger_handle: task::spawn(Self::log_hashrate(Arc::clone(&hashes_tried))),
             is_synced: true,
@@ -67,7 +68,7 @@ impl MinerManager {
     }
 
     fn launch_cpu_threads(
-        send_channel: Sender<RpcBlock>,
+        send_channel: Sender<BlockSeed>,
         hashes_tried: Arc<AtomicU64>,
         work_channel: watch::Receiver<Option<pow::State>>,
         n_cpus: Option<u16>,
@@ -79,7 +80,7 @@ impl MinerManager {
     }
 
     fn launch_gpu_threads(
-        send_channel: Sender<RpcBlock>,
+        send_channel: Sender<BlockSeed>,
         hashes_tried: Arc<AtomicU64>,
         work_channel: watch::Receiver<Option<pow::State>>,
         manager: &PluginManager,
@@ -97,7 +98,7 @@ impl MinerManager {
         vec
     }
 
-    pub async fn process_block(&mut self, block: Option<RpcBlock>) -> Result<(), Error> {
+    pub async fn process_block(&mut self, block: Option<BlockSeed>) -> Result<(), Error> {
         let state = match block {
             Some(b) => {
                 self.is_synced = true;
@@ -114,13 +115,16 @@ impl MinerManager {
             }
         };
 
-        self.block_channel.send(state).map_err(|_e| "Failed sending block to threads")?;
+        match &self.block_channel {
+            Some(channel) => channel.send(state).map_err(|_e| "Failed sending block to threads")?,
+            _ => return Err("Channel dropped".into())
+        }
         Ok(())
     }
 
     #[allow(unreachable_code)]
     fn launch_gpu_miner(
-        send_channel: Sender<RpcBlock>,
+        send_channel: Sender<BlockSeed>,
         mut block_channel: watch::Receiver<Option<pow::State>>,
         hashes_tried: Arc<AtomicU64>,
         spec: Box<dyn WorkerSpec>,
@@ -137,7 +141,13 @@ impl MinerManager {
                 loop {
                     nonces[0] = 0;
                     if state.is_none() {
-                        state = block_channel.wait_for_change()?;
+                        state = match block_channel.wait_for_change() {
+                            Ok(s) => s,
+                            Err(e) => {
+                                info!("{}: GPU thread crashed: {}", gpu_work.id(), e.to_string());
+                                return Ok(());
+                            }
+                        };
                     }
                     let state_ref = match &state {
                         Some(s) => {
@@ -151,13 +161,10 @@ impl MinerManager {
 
                     gpu_work.copy_output_to(&mut nonces)?;
                     if nonces[0] != 0 {
-                        if let Some(block) = state_ref.generate_block_if_pow(nonces[0]) {
-                            let block_hash = block
-                                .block_hash()
-                                .expect("We just got it from the state, we should be able to hash it");
-                            match send_channel.blocking_send(block) {
-                                Ok(()) => info!("Found a block: {:x}", block_hash),
-                                Err(e) => error!("Failed submitting block: {:x} ({})", block_hash, e.to_string()),
+                        if let Some(block_seed) = state_ref.generate_block_if_pow(nonces[0]) {
+                            match send_channel.blocking_send(block_seed.clone()) {
+                                Ok(()) => block_seed.report_block(),
+                                Err(e) => error!("Failed submitting block: ({})", e.to_string()),
                             };
                             state = None;
                             nonces[0] = 0;
@@ -219,27 +226,40 @@ impl MinerManager {
 
     #[allow(unreachable_code)]
     pub fn launch_cpu_miner(
-        send_channel: Sender<RpcBlock>,
+        send_channel: Sender<BlockSeed>,
         mut block_channel: watch::Receiver<Option<pow::State>>,
         hashes_tried: Arc<AtomicU64>,
     ) -> MinerHandler {
         let mut nonce = Wrapping(thread_rng().next_u64());
+        let mut mask = Wrapping(0);
+        let mut fixed= Wrapping(0);
         std::thread::spawn(move || {
             (|| {
                 let mut state = None;
+
                 loop {
                     if state.is_none() {
-                        state = block_channel.wait_for_change()?;
+                        state = match block_channel.wait_for_change() {
+                            Ok(s) => s,
+                            Err(e) => {
+                                info!("CPU thread crashed: {}", e.to_string());
+                                return Ok(());
+                            }
+                        };
+                        if let Some(s) = &state  {
+                            mask = Wrapping(s.nonce_mask);
+                            fixed = Wrapping(s.nonce_fixed);
+                        }
                     }
                     let state_ref = match state.as_mut() {
                         Some(s) => s,
                         None => continue,
                     };
-                    if let Some(block) = state_ref.generate_block_if_pow(nonce.0) {
-                        let block_hash =
-                            block.block_hash().expect("We just got it from the state, we should be able to hash it");
-                        send_channel.blocking_send(block)?;
-                        info!("Found a block: {:x}", block_hash);
+                    nonce = (nonce & mask) | fixed;
+
+                    if let Some(block_seed) = state_ref.generate_block_if_pow(nonce.0) {
+                        block_seed.report_block();
+                        send_channel.blocking_send(block_seed.clone())?;
                         state = None;
                     }
                     nonce += Wrapping(1);
