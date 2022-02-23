@@ -88,7 +88,7 @@ pub struct StratumHandler {
     extranonce: Option<String>,
     last_stratum_id: Arc<AtomicU32>,
 
-    shares_pending: Arc<Mutex<HashMap<u32, u64>>>,
+    shares_pending: Arc<Mutex<HashMap<u32, String>>>,
     shares_stats: Arc<ShareStats>,
 }
 
@@ -171,7 +171,8 @@ impl Client for StratumHandler {
                     shares_pending.try_lock().unwrap()
                         .insert(
                             msg_id,
-                            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()
+                            //SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()
+                            id.clone()
                         );
                 }
                 StratumLine::StratumCommand(StratumCommand::MiningSubmit(MiningSubmit::MiningSubmitShort{
@@ -189,7 +190,7 @@ impl StratumHandler {
     pub async fn connect(address: String, miner_address: String, mine_when_not_synced: bool, block_template_ctr: Option<Arc<AtomicU16>>) -> Result<Box<Self>, Error>
     {
         info!("Connecting to {}", address);
-        let socket = TcpStream::connect(address).await.unwrap();
+        let socket = TcpStream::connect(address).await?;
 
         let client = Framed::new(socket, NewLineJsonCodec::new());
         let (send_channel, recv) = mpsc::channel::<StratumLine>(3);
@@ -219,7 +220,7 @@ impl StratumHandler {
             nonce_fixed: 0,
             extranonce: None,
             last_stratum_id: Arc::new(AtomicU32::new(0)),
-            shares_pending: Arc::new(Mutex::new(HashMap::<u32, u64>::new())),
+            shares_pending: Arc::new(Mutex::new(HashMap::<u32, String>::new())),
             shares_stats: share_state.clone(),
             mining_dev: None
         }))
@@ -228,7 +229,7 @@ impl StratumHandler {
     async fn handle_message(&mut self, msg: StratumLine, miner: &mut MinerManager) -> Result<(), Error> {
         match msg.clone() {
             StratumLine::StratumResult { id, error: None, .. } => {
-                if let Some(_timestamp) = self.shares_pending.try_lock().unwrap().remove(&id) {
+                if let Some(_jobid) = self.shares_pending.try_lock().unwrap().remove(&id) {
                     self.shares_stats.accepted.fetch_add(1, Ordering::SeqCst);
                     info!("Share accepted");
                 } else {
@@ -238,7 +239,7 @@ impl StratumHandler {
                 Ok(())
             }
             StratumLine::StratumResult { id, error: Some((code, error, _)), .. } => {
-                let _timestamp = { self.shares_pending.try_lock().unwrap().remove(&id) };
+                let jobid = { self.shares_pending.try_lock().unwrap().remove(&id) }.unwrap_or("NA".into());
                 match code {
                     ErrorCode::Unknown => {
                         error!("Got error code {}: {}", code, error);
@@ -246,17 +247,17 @@ impl StratumHandler {
                     }
                     ErrorCode::JobNotFound => {
                         self.shares_stats.stale.fetch_add(1, Ordering::SeqCst);
-                        warn!("Stale share");
+                        warn!("Stale share (Job id: {})", jobid);
                         Ok(())
                     }
                     ErrorCode::DuplicateShare => {
                         self.shares_stats.duplicate.fetch_add(1, Ordering::SeqCst);
-                        warn!("Duplicate share");
+                        warn!("Duplicate share (Job id: {})", jobid);
                         Ok(())
                     }
                     ErrorCode::LowDifficultyShare => {
                         self.shares_stats.low_diff.fetch_add(1, Ordering::SeqCst);
-                        warn!("Low difficulty share");
+                        warn!("Low difficulty share (Job id: {})", jobid);
                         Ok(())
                     }
                     ErrorCode::Unauthorized => {

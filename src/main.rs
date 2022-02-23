@@ -106,10 +106,10 @@ async fn main() -> Result<(), Error> {
         client.register().await?;
         let mut miner_manager = MinerManager::new(client.get_send_channel().clone(), opt.num_threads, &plugin_manager);
         match client.listen(&mut miner_manager).await {
-            Ok(()) => warn!("Client closed gracefully?"),
+            Ok(()) => info!("Client closed gracefully"),
             Err(e) => error!("Client closed with error {:?}", e)
         };
-        warn!("Disconnected from kaspad, retrying");
+        info!("Client closed, reconnecting");
         sleep(Duration::from_millis(100));
         drop(miner_manager);
     }

@@ -15,10 +15,16 @@ use crate::pow::BlockSeed;
 
 type MinerHandler = std::thread::JoinHandle<Result<(), Error>>;
 
+#[derive(Clone)]
+enum WorkerCommand {
+    Job(pow::State),
+    Close
+}
+
 #[allow(dead_code)]
 pub struct MinerManager {
     handles: Vec<MinerHandler>,
-    block_channel: Option<watch::Sender<Option<pow::State>>>,
+    block_channel: watch::Sender<Option<WorkerCommand>>,
     send_channel: Sender<BlockSeed>,
     logger_handle: JoinHandle<()>,
     is_synced: bool,
@@ -29,7 +35,17 @@ pub struct MinerManager {
 impl Drop for MinerManager {
     fn drop(&mut self) {
         self.logger_handle.abort();
-        self.block_channel = None; // Force closing of channel
+        match self.block_channel.send(Some(WorkerCommand::Close)) {
+            Ok(_) => {}
+            Err(_) => warn!("All workers are already dead")
+        }
+        while self.handles.len() > 0 {
+            let handle = self.handles.pop().expect("There should be at least one");
+            match handle.join() {
+                Ok(_) => {},
+                Err(e) => panic!("Change failed to close gracefully: {:?}", e),
+            };
+        }
     }
 }
 
@@ -58,7 +74,7 @@ impl MinerManager {
         }
         Self {
             handles,
-            block_channel: Some(send),
+            block_channel: send,
             send_channel,
             logger_handle: task::spawn(Self::log_hashrate(Arc::clone(&hashes_tried))),
             is_synced: true,
@@ -70,7 +86,7 @@ impl MinerManager {
     fn launch_cpu_threads(
         send_channel: Sender<BlockSeed>,
         hashes_tried: Arc<AtomicU64>,
-        work_channel: watch::Receiver<Option<pow::State>>,
+        work_channel: watch::Receiver<Option<WorkerCommand>>,
         n_cpus: Option<u16>,
     ) -> impl Iterator<Item = MinerHandler> {
         let n_cpus = get_num_cpus(n_cpus);
@@ -82,7 +98,7 @@ impl MinerManager {
     fn launch_gpu_threads(
         send_channel: Sender<BlockSeed>,
         hashes_tried: Arc<AtomicU64>,
-        work_channel: watch::Receiver<Option<pow::State>>,
+        work_channel: watch::Receiver<Option<WorkerCommand>>,
         manager: &PluginManager,
     ) -> Vec<MinerHandler> {
         let mut vec = Vec::<MinerHandler>::new();
@@ -103,7 +119,7 @@ impl MinerManager {
             Some(b) => {
                 self.is_synced = true;
                 let id = self.current_state_id.fetch_add(1, Ordering::SeqCst);
-                Some(pow::State::new(id, b)?)
+                Some(WorkerCommand::Job(pow::State::new(id, b)?))
             }
             None => {
                 if !self.is_synced {
@@ -115,17 +131,14 @@ impl MinerManager {
             }
         };
 
-        match &self.block_channel {
-            Some(channel) => channel.send(state).map_err(|_e| "Failed sending block to threads")?,
-            _ => return Err("Channel dropped".into())
-        }
+        self.block_channel.send(state).map_err(|_e| "Failed sending block to threads")?;
         Ok(())
     }
 
     #[allow(unreachable_code)]
     fn launch_gpu_miner(
         send_channel: Sender<BlockSeed>,
-        mut block_channel: watch::Receiver<Option<pow::State>>,
+        mut block_channel: watch::Receiver<Option<WorkerCommand>>,
         hashes_tried: Arc<AtomicU64>,
         spec: Box<dyn WorkerSpec>,
     ) -> MinerHandler {
@@ -142,7 +155,11 @@ impl MinerManager {
                     nonces[0] = 0;
                     if state.is_none() {
                         state = match block_channel.wait_for_change() {
-                            Ok(s) => s,
+                            Ok(cmd) => match cmd {
+                                Some(WorkerCommand::Job(s)) => Some(s),
+                                Some(WorkerCommand::Close) => {return Ok(());}
+                                None => None,
+                            },
                             Err(e) => {
                                 info!("{}: GPU thread crashed: {}", gpu_work.id(), e.to_string());
                                 return Ok(());
@@ -210,8 +227,12 @@ impl MinerManager {
                     hashes_tried.fetch_add(gpu_work.get_workload().try_into().unwrap(), Ordering::AcqRel);
 
                     {
-                        if let Some(new_state) = block_channel.get_changed()? {
-                            state = new_state;
+                        if let Some(new_cmd) = block_channel.get_changed()? {
+                            state = match new_cmd {
+                                Some(WorkerCommand::Job(s)) => Some(s),
+                                Some(WorkerCommand::Close) => {return Ok(());}
+                                None => None,
+                            };
                         }
                     }
                 }
@@ -225,9 +246,9 @@ impl MinerManager {
     }
 
     #[allow(unreachable_code)]
-    pub fn launch_cpu_miner(
+    fn launch_cpu_miner(
         send_channel: Sender<BlockSeed>,
-        mut block_channel: watch::Receiver<Option<pow::State>>,
+        mut block_channel: watch::Receiver<Option<WorkerCommand>>,
         hashes_tried: Arc<AtomicU64>,
     ) -> MinerHandler {
         let mut nonce = Wrapping(thread_rng().next_u64());
@@ -240,7 +261,11 @@ impl MinerManager {
                 loop {
                     if state.is_none() {
                         state = match block_channel.wait_for_change() {
-                            Ok(s) => s,
+                            Ok(cmd) => match cmd {
+                                Some(WorkerCommand::Job(s)) => Some(s),
+                                Some(WorkerCommand::Close) => {return Ok(());},
+                                None => None,
+                            },
                             Err(e) => {
                                 info!("CPU thread crashed: {}", e.to_string());
                                 return Ok(());
@@ -267,8 +292,12 @@ impl MinerManager {
                     hashes_tried.fetch_add(1, Ordering::AcqRel);
 
                     if nonce.0 % 128 == 0 {
-                        if let Some(new_state) = block_channel.get_changed()? {
-                            state = new_state;
+                        if let Some(new_cmd) = block_channel.get_changed()? {
+                            state = match new_cmd {
+                                Some(WorkerCommand::Job(s)) => Some(s),
+                                Some(WorkerCommand::Close) => { return Ok(()); }
+                                None => None,
+                            };
                         }
                     }
                 }
