@@ -88,6 +88,15 @@ async fn main() -> Result<(), Error> {
     info!("Found plugins: {:?}", plugins);
 
     let block_template_ctr = Arc::new(AtomicU16::new((thread_rng().next_u64() % 10_000u64) as u16));
+    if opt.devfund_percent > 0 {
+        client.add_devfund(opt.devfund_address.clone(), opt.devfund_percent);
+        info!(
+                "devfund enabled, mining {}.{}% of the time to devfund address: {} ",
+                opt.devfund_percent / 100,
+                opt.devfund_percent % 100,
+                opt.devfund_address
+            );
+    }
     loop {
         let mut client  = get_client(
             opt.kaspad_address.clone(), opt.mining_address.clone(),
@@ -95,13 +104,6 @@ async fn main() -> Result<(), Error> {
         ).await?;
 
         if opt.devfund_percent > 0 {
-            client.add_devfund(opt.devfund_address.clone(), opt.devfund_percent);
-            info!(
-                "devfund enabled, mining {}.{}% of the time to devfund address: {} ",
-                opt.devfund_percent / 100,
-                opt.devfund_percent % 100,
-                opt.devfund_address
-            );
         }
         client.register().await?;
         let mut miner_manager = MinerManager::new(client.get_send_channel().clone(), opt.num_threads, &plugin_manager);
