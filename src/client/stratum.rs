@@ -18,7 +18,7 @@ use tokio::sync::mpsc::{self, Sender};
 use tokio_stream::wrappers::{ReceiverStream};
 use crate::client::Client;
 use async_trait::async_trait;
-use crate::client::stratum::statum_codec::{ErrorCode, NewLineJsonCodecError, StratumLine};
+use crate::client::stratum::statum_codec::{ErrorCode, NewLineJsonCodecError, StratumLine, MiningNotify};
 use futures_util::TryStreamExt;
 use num::Float;
 use parking::Mutex;
@@ -105,7 +105,7 @@ impl Client for StratumHandler {
                     id,
                     params: (
                         env!("CARGO_PKG_VERSION").into(),
-                        self.extranonce.clone().unwrap_or("0xffffffff".into())
+                        //self.extranonce.clone().unwrap_or("0xffffffff".into())
                     ),
                     error: None
                 }
@@ -144,10 +144,7 @@ impl Client for StratumHandler {
             }
             match self.stream.try_next().await? {
                 Some(msg) => {
-                    match self.handle_message(msg, miner).await {
-                        Ok(()) => {},
-                        Err(e) => warn!("failed handling message: {}", e)
-                    }
+                    self.handle_message(msg, miner).await?
                 },
                 None => return Err("stratum message payload is empty".into()),
             }
@@ -266,39 +263,57 @@ impl StratumHandler {
                 }
             }
             StratumLine::StratumCommand(StratumCommand::SetExtranonce { params: (ref extranonce, ref nonce_size), ref error, .. }) if error.is_none() => {
-                self.extranonce = Some(extranonce.clone());
-                self.nonce_fixed = u64::from_str_radix(extranonce.as_str(), 16)? << (nonce_size*8);
-                self.nonce_mask = (1 << (nonce_size*8))-1;
-                Ok(())
+                self.set_extranonce(extranonce, nonce_size)
             },
             StratumLine::StratumCommand(StratumCommand::MiningSetDifficulty { params: (ref difficulty,), ref error, .. }) if error.is_none() => {
-                let mut buf = [0u64, 0u64, 0u64, 0u64];
-                let (mantissa, exponent, _) = difficulty.recip().integer_decode();
-                let new_mantissa = mantissa*DIFFICULTY_1_TARGET.0;
-                let new_exponent = (DIFFICULTY_1_TARGET.1 + exponent) as u64;
-                let start = (new_exponent / 64) as usize;
-                let remainder = new_exponent % 64;
-
-                buf[start] = new_mantissa << remainder;        // bottom
-                if start < 3 {
-                    buf[start + 1] = new_mantissa >> 64 - remainder; // top
-                } else if new_mantissa.leading_zeros() < remainder as u32 {
-                    return Err("Target is too big".into());
-                }
-
-                self.target_pool = Uint256::new(buf);
-                info!("Difficulty: {:?}, Target: 0x{:x}", difficulty, self.target_pool);
-                Ok(())
+                self.set_difficulty(difficulty)
             },
-            StratumLine::StratumCommand(StratumCommand::MiningNotify { params: (id, header_hash, timestamp), ref error, .. }) if error.is_none() => {
+            StratumLine::StratumCommand(StratumCommand::MiningNotify(MiningNotify::MiningNotifyShort{ params: (id, header_hash, timestamp), ref error, .. })) if error.is_none() => {
                 self.block_template_ctr.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |v| Some((v+1) % 10_000)).unwrap();
                 miner.process_block(Some(PartialBlock{
                     id, header_hash, timestamp, nonce: 0, target: self.target_pool.clone(),
                     nonce_mask: self.nonce_mask, nonce_fixed: self.nonce_fixed
                 })).await
             },
+            StratumLine::SubscribeResult { result: (ref _subscriptions, ref extranonce, ref nonce_size),.. } => {
+                self.set_extranonce(extranonce, nonce_size)
+                /*for (name, value) in _subscriptions {
+                    match name.as_str() {
+                        "mining.set_difficulty" => {self.set_difficulty(&f32::from_str(value.as_str())?)?;},
+                        _ => {warn!("Ignored {} (={})", name, value);}
+                    }
+                }
+                Ok(())*/
+            },
             _ => Err(format!("Unhandled stratum response: {:?}", msg).into()),
         }
+    }
+
+    fn set_difficulty(&mut self, difficulty: &f32) -> Result<(),Error>{
+        let mut buf = [0u64, 0u64, 0u64, 0u64];
+        let (mantissa, exponent, _) = difficulty.recip().integer_decode();
+        let new_mantissa = mantissa*DIFFICULTY_1_TARGET.0;
+        let new_exponent = (DIFFICULTY_1_TARGET.1 + exponent) as u64;
+        let start = (new_exponent / 64) as usize;
+        let remainder = new_exponent % 64;
+
+        buf[start] = new_mantissa << remainder;        // bottom
+        if start < 3 {
+            buf[start + 1] = new_mantissa >> 64 - remainder; // top
+        } else if new_mantissa.leading_zeros() < remainder as u32 {
+            return Err("Target is too big".into());
+        }
+
+        self.target_pool = Uint256::new(buf);
+        info!("Difficulty: {:?}, Target: 0x{:x}", difficulty, self.target_pool);
+        Ok(())
+    }
+
+    fn set_extranonce(&mut self, extranonce: &String, nonce_size: &u32) -> Result<(), Error>{
+        self.extranonce = Some(extranonce.clone());
+        self.nonce_fixed = u64::from_str_radix(extranonce.as_str(), 16)? << (nonce_size*8);
+        self.nonce_mask = (1 << (nonce_size*8))-1;
+        Ok(())
     }
 
     async fn log_shares(shares_info: Arc<ShareStats>) {

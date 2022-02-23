@@ -34,17 +34,24 @@ impl Display for ErrorCode {
 type StratumError = Option<(ErrorCode, String, Option<Value>)>;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(untagged)]
+pub(crate) enum MiningNotify {
+    MiningNotifyShort{id: Option<u32>, params: (String, [u64;4], u64), error:StratumError},
+    MiningNotifyLong{id: Option<u32>, params: (String, String, String, String, Vec<String>, String, String, String, bool), error:StratumError},
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag="method")]
 pub(crate) enum StratumCommand {
     #[serde(rename = "set_extranonce")]
     SetExtranonce{id: u32, params: (String, u32), error:StratumError},
     #[serde(rename = "mining.set_difficulty")]
-    MiningSetDifficulty{id: u32, params: (f32,), error:StratumError},
+    MiningSetDifficulty{id: Option<u32>, params: (f32,), error:StratumError},
     #[serde(rename = "mining.notify")]
-    MiningNotify{id: u32, params: (String, [u64;4], u64), error:StratumError},
-    #[serde(rename = "subscribe")]
-    Subscribe{id:u32, params: (String, String), error: StratumError},
-    #[serde(rename = "authorize")]
+    MiningNotify(MiningNotify),
+    #[serde(rename = "mining.subscribe")]
+    Subscribe{id:u32, params: (String,), error: StratumError},
+    #[serde(rename = "mining.authorize")]
     Authorize{id:u32, params: (String, String), error: StratumError},
     #[serde(rename = "mining.submit")]
     MiningSubmit{id: u32, params: (String, String, String), error: StratumError}
@@ -54,11 +61,8 @@ pub(crate) enum StratumCommand {
 #[serde(untagged)]
 pub(crate) enum StratumLine {
     StratumCommand(StratumCommand),
-    StratumResult {
-        id: u32,
-        result: Option<bool>,
-        error: StratumError
-    }
+    StratumResult{id: u32, result: Option<bool>, error: StratumError},
+    SubscribeResult{id: u32, result: (Vec<(String, String)>, String, u32), error: StratumError}
 }
 
 
