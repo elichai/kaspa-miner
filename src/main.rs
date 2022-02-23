@@ -58,7 +58,7 @@ fn filter_plugins(dirname: &str) -> Vec<String> {
 }
 
 async fn get_client(kaspad_address: String, mining_address:String, mine_when_not_synced: bool, block_template_ctr: Arc<AtomicU16>) -> Result<Box<dyn Client + 'static>, Error> {
-    if kaspad_address.starts_with("stratum://") {
+    if kaspad_address.starts_with("stratum+tcp://") {
         let (_schema, address) = kaspad_address.split_once("://").unwrap();
         Ok(StratumHandler::connect(address.to_string().clone(), mining_address.clone(), mine_when_not_synced, Some(block_template_ctr.clone()))
             .await?)
