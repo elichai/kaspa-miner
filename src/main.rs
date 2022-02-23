@@ -7,7 +7,7 @@ use std::ffi::OsStr;
 
 use clap::{App, FromArgMatches, IntoApp};
 use kaspa_miner::PluginManager;
-use log::{error, info, warn};
+use log::{error, info};
 use std::fs;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU16;

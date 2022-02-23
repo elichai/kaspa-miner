@@ -184,7 +184,10 @@ impl MinerManager {
                                 Ok(()) => block_seed.report_block(),
                                 Err(e) => error!("Failed submitting block: ({})", e.to_string()),
                             };
-                            state = None;
+                            match block_seed {
+                                BlockSeed::FullBlock(_) => {state = None;},
+                                _ => {}
+                            }
                             nonces[0] = 0;
                             hashes_tried.fetch_add(gpu_work.get_workload().try_into().unwrap(), Ordering::AcqRel);
                             continue;
@@ -284,9 +287,15 @@ impl MinerManager {
                     nonce = (nonce & mask) | fixed;
 
                     if let Some(block_seed) = state_ref.generate_block_if_pow(nonce.0) {
-                        block_seed.report_block();
-                        send_channel.blocking_send(block_seed.clone())?;
-                        state = None;
+                        match send_channel.blocking_send(block_seed.clone()) {
+                            Ok(()) => block_seed.report_block(),
+                            Err(e) => error!("Failed submitting block: ({})", e.to_string()),
+                        };
+                        match block_seed {
+                            BlockSeed::FullBlock(_) => {state = None;},
+                            _ => {}
+                        }
+
                     }
                     nonce += Wrapping(1);
                     // TODO: Is this really necessary? can we just use Relaxed?
