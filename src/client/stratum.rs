@@ -106,7 +106,7 @@ impl Client for StratumHandler {
                 StratumCommand::Subscribe{
                     id,
                     params: (
-                        env!("CARGO_PKG_VERSION").into(),
+                        format!("{}/{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")),
                         //self.extranonce.clone().unwrap_or("0xffffffff".into())
                     ),
                     error: None

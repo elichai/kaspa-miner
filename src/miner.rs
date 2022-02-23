@@ -34,6 +34,7 @@ pub struct MinerManager {
 
 impl Drop for MinerManager {
     fn drop(&mut self) {
+        info!("Closing miner");
         self.logger_handle.abort();
         match self.block_channel.send(Some(WorkerCommand::Close)) {
             Ok(_) => {}
