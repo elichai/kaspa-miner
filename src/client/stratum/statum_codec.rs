@@ -41,6 +41,13 @@ pub(crate) enum MiningNotify {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(untagged)]
+pub(crate) enum MiningSubmit {
+    MiningSubmitShort{id: u32, params: (String, String, String), error: StratumError},
+    MiningSubmitLong{id: u32, params: (String, String, String, String, String), error:StratumError},
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag="method")]
 pub(crate) enum StratumCommand {
     #[serde(rename = "set_extranonce")]
@@ -54,7 +61,7 @@ pub(crate) enum StratumCommand {
     #[serde(rename = "mining.authorize")]
     Authorize{id:u32, params: (String, String), error: StratumError},
     #[serde(rename = "mining.submit")]
-    MiningSubmit{id: u32, params: (String, String, String), error: StratumError}
+    MiningSubmit(MiningSubmit)
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

@@ -18,7 +18,7 @@ use tokio::sync::mpsc::{self, Sender};
 use tokio_stream::wrappers::{ReceiverStream};
 use crate::client::Client;
 use async_trait::async_trait;
-use crate::client::stratum::statum_codec::{ErrorCode, NewLineJsonCodecError, StratumLine, MiningNotify};
+use crate::client::stratum::statum_codec::{ErrorCode, NewLineJsonCodecError, StratumLine, MiningNotify, MiningSubmit};
 use futures_util::TryStreamExt;
 use num::Float;
 use parking::Mutex;
@@ -172,11 +172,11 @@ impl Client for StratumHandler {
                             SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()
                         );
                 }
-                StratumLine::StratumCommand(StratumCommand::MiningSubmit{
+                StratumLine::StratumCommand(StratumCommand::MiningSubmit(MiningSubmit::MiningSubmitShort{
                     id: msg_id,
                     params: (address.clone(), id.into(), format!("{:#08x}", nonce)),
                     error: None
-                })
+                }))
             }).map(Ok).forward(PollSender::new(forwarding)).await
         });
         send
