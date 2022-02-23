@@ -42,6 +42,8 @@ pub struct ShareStats {
     pub duplicate: AtomicU64,
 }
 
+static mut SHARE_STATS: Option<Arc<ShareStats>> = None;
+
 impl Display for ShareStats {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "Shares: {}{}{}{}",
@@ -196,9 +198,14 @@ impl StratumHandler {
             ReceiverStream::new(recv).map(Ok).forward(sink).await
         });
 
-        let shares_stats = Arc::new(ShareStats::default());
+        let share_state = unsafe {
+            if SHARE_STATS.is_none() {
+                SHARE_STATS = Some(Arc::new(ShareStats::default()));
+            }
+            SHARE_STATS.clone().unwrap().clone()
+        };
         Ok(Box::new(Self {
-            log_handler: task::spawn(Self::log_shares(shares_stats.clone())),
+            log_handler: task::spawn(Self::log_shares(share_state.clone())),
             stream: Box::pin(stream),
             send_channel,
             miner_address,
@@ -213,7 +220,7 @@ impl StratumHandler {
             extranonce: None,
             last_stratum_id: Arc::new(AtomicU32::new(0)),
             shares_pending: Arc::new(Mutex::new(HashMap::<u32, u64>::new())),
-            shares_stats,
+            shares_stats: share_state.clone(),
             mining_dev: None
         }))
     }
