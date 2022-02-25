@@ -38,6 +38,7 @@ jobs:
         uses: tmrlvi/cuda-toolkit@master
         with:
           cuda: '11.2.2'
+          method: 'local'
 
       - name: Install CUDA Windows
         if: runner.os == 'Windows'
@@ -125,6 +126,7 @@ jobs:
         uses: tmrlvi/cuda-toolkit@master
         with:
           cuda: '11.2.2'
+          method: 'local'
 
       - name: Build ${{ matrix.itegration }} Script
         run: |

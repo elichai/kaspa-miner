@@ -98,27 +98,32 @@ jobs:
       - name: Run cargo test regular features
         uses: actions-rs/cargo@v1
         with:
-          command: test
+          command: test -p kaspa-miner
 
       - name: Run cargo test no asm
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --features=no-asm
+          args: -p kaspa-miner --features=no-asm
 
 
       - name: Run cargo test no parking_lot
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --no-default-features
+          args: -p kaspa-miner --no-default-features
 
       - name: Run cargo test shuttle
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --no-default-features --features=shuttle
+          args: -p kaspa-miner --no-default-features --features=shuttle
 
+      - name: Run cargo test for kaspaopencl
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -p kapaopencl
 
 
   test-release:
@@ -178,26 +183,31 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --release
+          args: --release -p kaspa-miner
 
       - name: Run cargo test release no asm
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --features=no-asm --release
+          args: --features=no-asm --release -p kaspa-miner
 
       - name: Run cargo test release no parking_lot
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --no-default-features --release
+          args: --no-default-features --release -p kaspa-miner
 
       - name: Run cargo test release shuttle
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --no-default-features --features=shuttle --release
+          args: --no-default-features --features=shuttle --release -p kaspa-miner
 
+      - name: Run cargo test for kaspaopencl
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --release -p kapaopencl
   lints:
     name: Lints
     runs-on: ubuntu-latest
