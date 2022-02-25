@@ -150,7 +150,7 @@ impl Encoder<StratumLine> for NewLineJsonCodec {
         if let Ok(json) = serde_json::to_string(&item) {
             return self.lines_codec.encode(json, dst).map_err(|_| NewLineJsonCodecError::LineEncodeError);
         }
-        return Err(NewLineJsonCodecError::JsonEncodeError);
+        Err(NewLineJsonCodecError::JsonEncodeError)
     }
 }
 

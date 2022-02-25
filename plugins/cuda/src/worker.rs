@@ -198,7 +198,7 @@ impl<'gpu> CudaGPUWorker<'gpu> {
         Ok(Self {
             device_id,
             _context,
-            _module: _module.clone(),
+            _module,
             workload: chosen_workload,
             stream,
             rand_state,

@@ -88,9 +88,9 @@ impl State {
                 nonce_mask: mask,
                 ..
             } => {
-                pre_pow_hash = Hash::new(header_hash.clone());
-                header_timestamp = timestamp.clone();
-                header_target = target.clone();
+                pre_pow_hash = Hash::new(*header_hash);
+                header_timestamp = *timestamp;
+                header_target = *target;
                 nonce_mask = mask;
                 nonce_fixed = fixed
             }

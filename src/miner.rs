@@ -40,7 +40,7 @@ impl Drop for MinerManager {
             Ok(_) => {}
             Err(_) => warn!("All workers are already dead"),
         }
-        while self.handles.len() > 0 {
+        while !self.handles.is_empty() {
             let handle = self.handles.pop().expect("There should be at least one");
             match handle.join() {
                 Ok(_) => {}
@@ -184,9 +184,8 @@ impl MinerManager {
                                 Ok(()) => block_seed.report_block(),
                                 Err(e) => error!("Failed submitting block: ({})", e.to_string()),
                             };
-                            match block_seed {
-                                BlockSeed::FullBlock(_) => {state = None;},
-                                _ => {}
+                            if let BlockSeed::FullBlock(_) = block_seed {
+                                state = None;
                             }
                             nonces[0] = 0;
                             hashes_tried.fetch_add(gpu_work.get_workload().try_into().unwrap(), Ordering::AcqRel);
@@ -293,11 +292,8 @@ impl MinerManager {
                             Ok(()) => block_seed.report_block(),
                             Err(e) => error!("Failed submitting block: ({})", e.to_string()),
                         };
-                        match block_seed {
-                            BlockSeed::FullBlock(_) => {
-                                state = None;
-                            }
-                            _ => {}
+                        if let BlockSeed::FullBlock(_) = block_seed {
+                            state = None;
                         }
                     }
                     nonce += Wrapping(1);

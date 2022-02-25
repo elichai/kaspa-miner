@@ -96,7 +96,7 @@ impl KaspadHandler {
             devfund_address: None,
             devfund_percent: 0,
             block_template_ctr: block_template_ctr
-                .unwrap_or(Arc::new(AtomicU16::new((thread_rng().next_u64() % 10_000u64) as u16))),
+                .unwrap_or_else(|| Arc::new(AtomicU16::new((thread_rng().next_u64() % 10_000u64) as u16))),
         }))
     }
 

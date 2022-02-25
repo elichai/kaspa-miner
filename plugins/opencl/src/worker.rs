@@ -190,12 +190,10 @@ impl OpenCLGPUWorker {
             false => "",
         };
 
-        let experimental_amd_use = match device.name().unwrap_or_else(|_| "Unknown".into()).to_lowercase().as_str() {
-            "tahiti" => false,
-            "ellesmere" => false,
-            "gfx1010" => false,
-            _ => true,
-        };
+        let experimental_amd_use = !matches!(
+            device.name().unwrap_or_else(|_| "Unknown".into()).to_lowercase().as_str(),
+            "tahiti" | "ellesmere" | "gfx1010"
+        );
 
         let program = match use_binary {
             true => {
@@ -257,9 +255,7 @@ impl OpenCLGPUWorker {
                         &[include_bytes!("../resources/bin/gfx1032_kaspa-opencl.bin")],
                         "",
                     )
-                    .unwrap_or_else(|e| {
-                        panic!("{}::Program::create_and_build_from_binary failed: {}", name, e.to_string())
-                    }),
+                    .unwrap_or_else(|e| panic!("{}::Program::create_and_build_from_binary failed: {}", name, e)),
                     other => {
                         panic!(
                             "{}: Found device {} without prebuilt binary. Trying to run without --opencl-amd-binary.",
@@ -268,9 +264,8 @@ impl OpenCLGPUWorker {
                     }
                 }
             }
-            false => from_source(&context, &device, options).unwrap_or_else(|e| {
-                panic!("{}::Program::create_and_build_from_binary failed: {}", name, e.to_string())
-            }),
+            false => from_source(&context, &device, options)
+                .unwrap_or_else(|e| panic!("{}::Program::create_and_build_from_binary failed: {}", name, e)),
         };
         info!("Kernels: {:?}", program.kernel_names());
         let heavy_hash =

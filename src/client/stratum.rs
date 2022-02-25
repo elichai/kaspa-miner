@@ -211,7 +211,7 @@ impl StratumHandler {
             if SHARE_STATS.is_none() {
                 SHARE_STATS = Some(Arc::new(ShareStats::default()));
             }
-            SHARE_STATS.clone().unwrap().clone()
+            SHARE_STATS.clone().unwrap()
         };
         Ok(Box::new(Self {
             log_handler: task::spawn(Self::log_shares(share_state.clone())),
@@ -222,14 +222,14 @@ impl StratumHandler {
             devfund_address: None,
             devfund_percent: 0,
             block_template_ctr: block_template_ctr
-                .unwrap_or(Arc::new(AtomicU16::new((thread_rng().next_u64() % 10_000u64) as u16))),
+                .unwrap_or_else(|| Arc::new(AtomicU16::new((thread_rng().next_u64() % 10_000u64) as u16))),
             target_pool: Default::default(),
             target_real: Default::default(),
             nonce_mask: 0,
             nonce_fixed: 0,
             extranonce: None,
             last_stratum_id: Arc::new(AtomicU32::new(0)),
-            shares_stats: share_state.clone(),
+            shares_stats: share_state,
             mining_dev: None,
         }))
     }
@@ -282,7 +282,7 @@ impl StratumHandler {
                 params: (ref extranonce, ref nonce_size),
                 ref error,
                 ..
-            }) if error.is_none() => self.set_extranonce(extranonce, nonce_size),
+            }) if error.is_none() => self.set_extranonce(extranonce.as_str(), nonce_size),
             StratumLine::StratumCommand(StratumCommand::MiningSetDifficulty {
                 params: (ref difficulty,),
                 ref error,
@@ -302,7 +302,7 @@ impl StratumHandler {
                         header_hash,
                         timestamp,
                         nonce: 0,
-                        target: self.target_pool.clone(),
+                        target: self.target_pool,
                         nonce_mask: self.nonce_mask,
                         nonce_fixed: self.nonce_fixed,
                         hash: None,
@@ -310,7 +310,7 @@ impl StratumHandler {
                     .await
             }
             StratumLine::SubscribeResult { result: (ref _subscriptions, ref extranonce, ref nonce_size), .. } => {
-                self.set_extranonce(extranonce, nonce_size)
+                self.set_extranonce(extranonce.as_str(), nonce_size)
                 /*for (name, value) in _subscriptions {
                     match name.as_str() {
                         "mining.set_difficulty" => {self.set_difficulty(&f32::from_str(value.as_str())?)?;},
@@ -333,7 +333,7 @@ impl StratumHandler {
 
         buf[start] = new_mantissa << remainder; // bottom
         if start < 3 {
-            buf[start + 1] = new_mantissa >> 64 - remainder; // top
+            buf[start + 1] = new_mantissa >> (64 - remainder); // top
         } else if new_mantissa.leading_zeros() < remainder as u32 {
             return Err("Target is too big".into());
         }
@@ -343,9 +343,9 @@ impl StratumHandler {
         Ok(())
     }
 
-    fn set_extranonce(&mut self, extranonce: &String, nonce_size: &u32) -> Result<(), Error> {
-        self.extranonce = Some(extranonce.clone());
-        self.nonce_fixed = u64::from_str_radix(extranonce.as_str(), 16)? << (nonce_size * 8);
+    fn set_extranonce(&mut self, extranonce: &str, nonce_size: &u32) -> Result<(), Error> {
+        self.extranonce = Some(extranonce.to_string());
+        self.nonce_fixed = u64::from_str_radix(extranonce, 16)? << (nonce_size * 8);
         self.nonce_mask = (1 << (nonce_size * 8)) - 1;
         Ok(())
     }
