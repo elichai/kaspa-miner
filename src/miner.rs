@@ -17,7 +17,7 @@ type MinerHandler = std::thread::JoinHandle<Result<(), Error>>;
 
 #[derive(Clone)]
 enum WorkerCommand {
-    Job(pow::State),
+    Job(Box<pow::State>),
     Close,
 }
 
@@ -120,7 +120,7 @@ impl MinerManager {
             Some(b) => {
                 self.is_synced = true;
                 let id = self.current_state_id.fetch_add(1, Ordering::SeqCst);
-                Some(WorkerCommand::Job(pow::State::new(id, b)?))
+                Some(WorkerCommand::Job(Box::new(pow::State::new(id, b)?)))
             }
             None => {
                 if !self.is_synced {
