@@ -23,7 +23,7 @@ jobs:
         with:
           cuda: '11.2.2'
           method: 'network'
-          sub-packages: '["nvcc"]'
+          sub-packages: '["nvcc", "cudart"]'
 
       - name: Cache
         uses: actions/cache@v2
@@ -76,7 +76,7 @@ jobs:
         with:
           cuda: '11.2.2'
           method: 'network'
-          sub-packages: '["nvcc"]'
+          sub-packages: '["nvcc", "cudart"]'
 
       - name: Install CUDA Windows
         if: runner.os == 'Windows'
@@ -84,7 +84,7 @@ jobs:
         with:
           cuda: '11.5.1'
           method: 'network'
-          sub-packages: '["nvcc"]'
+          sub-packages: '["nvcc", "cudart"]'
 
       - name: Cache
         uses: actions/cache@v2
@@ -163,7 +163,7 @@ jobs:
         with:
           cuda: '11.2.2'
           method: 'network'
-          sub-packages: '["nvcc"]'
+          sub-packages: '["nvcc", "cudart"]'
 
       - name: Install CUDA Windows
         if: runner.os == 'Windows'
@@ -171,7 +171,7 @@ jobs:
         with:
           cuda: '11.5.1'
           method: 'network'
-          sub-packages: '["nvcc"]'
+          sub-packages: '["nvcc", "cudart"]'
 
       - name: Cache
         uses: actions/cache@v2
@@ -233,7 +233,7 @@ jobs:
         with:
           cuda: '11.2.2'
           method: 'network'
-          sub-packages: '["nvcc"]'
+          sub-packages: '["nvcc", "cudart"]'
 
       - name: Cache
         uses: actions/cache@v2
