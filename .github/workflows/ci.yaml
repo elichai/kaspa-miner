@@ -126,7 +126,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: -p kapaopencl
+          args: -p kaspaopencl
 
 
   test-release:
@@ -170,7 +170,8 @@ jobs:
         uses: Jimver/cuda-toolkit@v0.2.5
         with:
           cuda: '11.5.1'
-          method: 'local'
+          method: 'network'
+          sub-packages: '["nvcc"]'
 
       - name: Cache
         uses: actions/cache@v2
@@ -211,7 +212,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --release -p kapaopencl
+          args: --release -p kaspaopencl
   lints:
     name: Lints
     runs-on: ubuntu-latest
