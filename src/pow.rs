@@ -18,7 +18,7 @@ pub enum BlockSeed {
     FullBlock(RpcBlock),
     PartialBlock {
         id: String, header_hash: [u64; 4], timestamp: u64, nonce: u64,
-        target: Uint256, nonce_mask: u64, nonce_fixed: u64
+        target: Uint256, nonce_mask: u64, nonce_fixed: u64, hash: Option<String>
     },
 }
 
@@ -115,8 +115,9 @@ impl State {
                     let header = &mut block.header.as_mut().expect("We checked that a header exists on creation");
                     header.nonce = nonce;
                 }
-                BlockSeed::PartialBlock { nonce: ref mut header_nonce, .. } => {
+                BlockSeed::PartialBlock { nonce: ref mut header_nonce, ref mut hash, .. } => {
                     *header_nonce = nonce;
+                    *hash = Some(format!("{:x}", self.calculate_pow(nonce)))
                 }
             }
             block_seed

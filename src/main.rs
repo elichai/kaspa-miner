@@ -71,6 +71,22 @@ async fn get_client(kaspad_address: String, mining_address:String, mine_when_not
 
 }
 
+async fn client_main(opt: &Opt, block_template_ctr: Arc<AtomicU16>, plugin_manager: &PluginManager) -> Result<(), Error> {
+    let mut client  = get_client(
+        opt.kaspad_address.clone(), opt.mining_address.clone(),
+        opt.mine_when_not_synced, block_template_ctr.clone()
+    ).await?;
+
+    if opt.devfund_percent > 0 {
+        client.add_devfund(opt.devfund_address.clone(), opt.devfund_percent);
+    }
+    client.register().await?;
+    let mut miner_manager = MinerManager::new(client.get_send_channel().clone(), opt.num_threads, &plugin_manager);
+    client.listen(&mut miner_manager).await?;
+    drop(miner_manager);
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let mut path = current_exe().unwrap_or_default();
@@ -97,22 +113,11 @@ async fn main() -> Result<(), Error> {
             );
     }
     loop {
-        let mut client  = get_client(
-            opt.kaspad_address.clone(), opt.mining_address.clone(),
-            opt.mine_when_not_synced, block_template_ctr.clone()
-        ).await?;
-
-        if opt.devfund_percent > 0 {
-            client.add_devfund(opt.devfund_address.clone(), opt.devfund_percent);
+        match client_main(&opt, block_template_ctr.clone(), &plugin_manager).await {
+            Ok(_) => info!("Client closed gracefully"),
+            Err(e) => error!("Client closed with error {:?}", e),
         }
-        client.register().await?;
-        let mut miner_manager = MinerManager::new(client.get_send_channel().clone(), opt.num_threads, &plugin_manager);
-        match client.listen(&mut miner_manager).await {
-            Ok(()) => info!("Client closed gracefully"),
-            Err(e) => error!("Client closed with error {:?}", e)
-        };
         info!("Client closed, reconnecting");
         sleep(Duration::from_millis(100));
-        drop(miner_manager);
     }
 }

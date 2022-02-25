@@ -3,7 +3,7 @@ use std::fmt::{Display, Formatter};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, Ordering};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 use futures::prelude::*;
 use tokio::net::TcpStream;
 use tokio_util::codec::Framed;
@@ -40,13 +40,14 @@ pub struct ShareStats {
     pub stale: AtomicU64,
     pub low_diff: AtomicU64,
     pub duplicate: AtomicU64,
+    pub shares_pending: Mutex<HashMap<u32, String>>,
 }
 
 static mut SHARE_STATS: Option<Arc<ShareStats>> = None;
 
 impl Display for ShareStats {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Shares: {}{}{}{}",
+        write!(f, "Shares: {}{}{}{}Pending: {}",
             match self.accepted.load(Ordering::SeqCst) {
                 0 => "".to_string(),
                 v => format!("Accepted: {} ", v),
@@ -62,7 +63,8 @@ impl Display for ShareStats {
             match self.duplicate.load(Ordering::SeqCst) {
                 0 => "".to_string(),
                 v => format!("Duplicate: {} ", v),
-            }
+            },
+            self.shares_pending.try_lock().unwrap().len()
         )
     }
 }
@@ -88,7 +90,6 @@ pub struct StratumHandler {
     extranonce: Option<String>,
     last_stratum_id: Arc<AtomicU32>,
 
-    shares_pending: Arc<Mutex<HashMap<u32, String>>>,
     shares_stats: Arc<ShareStats>,
 }
 
@@ -159,20 +160,21 @@ impl Client for StratumHandler {
         let address = self.miner_address.clone();
         let stratum_id = self.last_stratum_id.clone();
 
-        let shares_pending = self.shares_pending.clone();
+        let share_stats = self.shares_stats.clone();
         tokio::spawn(async move {
             ReceiverStream::new(recv).map(move |block_seed| {
                 let (nonce, id) = match block_seed {
-                    BlockSeed::PartialBlock { nonce, id, .. } => (nonce, id),
+                    BlockSeed::PartialBlock { ref nonce, ref id, .. } => (nonce, id),
                     BlockSeed::FullBlock( _ ) => unreachable!(),
                 };
                 let msg_id = stratum_id.fetch_add(1, Ordering::SeqCst);
                 {
-                    shares_pending.try_lock().unwrap()
+                    share_stats.shares_pending.try_lock().unwrap()
                         .insert(
                             msg_id,
                             //SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()
                             id.clone()
+                            //block_seed.clone()
                         );
                 }
                 StratumLine::StratumCommand(StratumCommand::MiningSubmit(MiningSubmit::MiningSubmitShort{
@@ -220,7 +222,6 @@ impl StratumHandler {
             nonce_fixed: 0,
             extranonce: None,
             last_stratum_id: Arc::new(AtomicU32::new(0)),
-            shares_pending: Arc::new(Mutex::new(HashMap::<u32, String>::new())),
             shares_stats: share_state.clone(),
             mining_dev: None
         }))
@@ -229,7 +230,7 @@ impl StratumHandler {
     async fn handle_message(&mut self, msg: StratumLine, miner: &mut MinerManager) -> Result<(), Error> {
         match msg.clone() {
             StratumLine::StratumResult { id, error: None, .. } => {
-                if let Some(_jobid) = self.shares_pending.try_lock().unwrap().remove(&id) {
+                if let Some(_jobid) = self.shares_stats.shares_pending.try_lock().unwrap().remove(&id) {
                     self.shares_stats.accepted.fetch_add(1, Ordering::SeqCst);
                     info!("Share accepted");
                 } else {
@@ -239,7 +240,7 @@ impl StratumHandler {
                 Ok(())
             }
             StratumLine::StratumResult { id, error: Some((code, error, _)), .. } => {
-                let jobid = { self.shares_pending.try_lock().unwrap().remove(&id) }.unwrap_or("NA".into());
+                let jobid = { self.shares_stats.shares_pending.try_lock().unwrap().remove(&id) }.unwrap();
                 match code {
                     ErrorCode::Unknown => {
                         error!("Got error code {}: {}", code, error);
@@ -247,17 +248,17 @@ impl StratumHandler {
                     }
                     ErrorCode::JobNotFound => {
                         self.shares_stats.stale.fetch_add(1, Ordering::SeqCst);
-                        warn!("Stale share (Job id: {})", jobid);
+                        warn!("Stale share (Job id: {:?})", jobid);
                         Ok(())
                     }
                     ErrorCode::DuplicateShare => {
                         self.shares_stats.duplicate.fetch_add(1, Ordering::SeqCst);
-                        warn!("Duplicate share (Job id: {})", jobid);
+                        warn!("Duplicate share (Job id: {:?})", jobid);
                         Ok(())
                     }
                     ErrorCode::LowDifficultyShare => {
                         self.shares_stats.low_diff.fetch_add(1, Ordering::SeqCst);
-                        warn!("Low difficulty share (Job id: {})", jobid);
+                        warn!("Low difficulty share (Job id: {:?})", jobid);
                         Ok(())
                     }
                     ErrorCode::Unauthorized => {
@@ -280,7 +281,7 @@ impl StratumHandler {
                 self.block_template_ctr.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |v| Some((v+1) % 10_000)).unwrap();
                 miner.process_block(Some(PartialBlock{
                     id, header_hash, timestamp, nonce: 0, target: self.target_pool.clone(),
-                    nonce_mask: self.nonce_mask, nonce_fixed: self.nonce_fixed
+                    nonce_mask: self.nonce_mask, nonce_fixed: self.nonce_fixed, hash: None
                 })).await
             },
             StratumLine::SubscribeResult { result: (ref _subscriptions, ref extranonce, ref nonce_size),.. } => {
