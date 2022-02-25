@@ -2,6 +2,7 @@ use crate::Error;
 use cust::context::CurrentContext;
 use cust::device::DeviceAttribute;
 use cust::function::Function;
+use cust::module::{ModuleJitOption, OptLevel};
 use cust::prelude::*;
 use kaspa_miner::xoshiro256starstar::Xoshiro256StarStar;
 use kaspa_miner::Worker;
@@ -9,7 +10,6 @@ use log::{error, info};
 use rand::Fill;
 use std::ffi::CString;
 use std::sync::{Arc, Weak};
-use cust::module::{ModuleJitOption, OptLevel};
 
 static PTX_86: &str = include_str!("../resources/kaspa-cuda-sm86.ptx");
 static PTX_75: &str = include_str!("../resources/kaspa-cuda-sm75.ptx");
@@ -124,7 +124,7 @@ impl<'gpu> CudaGPUWorker<'gpu> {
         info!("Starting a CUDA worker");
         let sync_flag = match blocking_sync {
             true => ContextFlags::SCHED_BLOCKING_SYNC,
-            false => ContextFlags::SCHED_AUTO
+            false => ContextFlags::SCHED_AUTO,
         };
         let device = Device::get_device(device_id).unwrap();
         let _context = Context::new(device)?;
@@ -200,7 +200,7 @@ impl<'gpu> CudaGPUWorker<'gpu> {
             _context,
             _module: _module.clone(),
             workload: chosen_workload,
-            stream: stream,
+            stream,
             rand_state,
             final_nonce_buff,
             heavy_hash_kernel,

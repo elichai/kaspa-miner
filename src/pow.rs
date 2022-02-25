@@ -1,11 +1,16 @@
-use std::sync::Arc;
 use log::info;
+use std::sync::Arc;
 
 pub use crate::pow::hasher::HeaderHasher;
-use crate::{pow::{
-    hasher::{Hasher, PowHasher},
-    heavy_hash::Matrix,
-}, proto::{RpcBlock, RpcBlockHeader}, target::{self, Uint256}, Error, Hash};
+use crate::{
+    pow::{
+        hasher::{Hasher, PowHasher},
+        heavy_hash::Matrix,
+    },
+    proto::{RpcBlock, RpcBlockHeader},
+    target::{self, Uint256},
+    Error, Hash,
+};
 use kaspa_miner::Worker;
 
 mod hasher;
@@ -17,20 +22,26 @@ mod xoshiro;
 pub enum BlockSeed {
     FullBlock(RpcBlock),
     PartialBlock {
-        id: String, header_hash: [u64; 4], timestamp: u64, nonce: u64,
-        target: Uint256, nonce_mask: u64, nonce_fixed: u64, hash: Option<String>
+        id: String,
+        header_hash: [u64; 4],
+        timestamp: u64,
+        nonce: u64,
+        target: Uint256,
+        nonce_mask: u64,
+        nonce_fixed: u64,
+        hash: Option<String>,
     },
 }
 
 impl BlockSeed {
     pub fn report_block(&self) {
         match self {
-            BlockSeed::FullBlock( block ) => {
+            BlockSeed::FullBlock(block) => {
                 let block_hash =
                     block.block_hash().expect("We just got it from the state, we should be able to hash it");
                 info!("Found a block: {:x}", block_hash);
             }
-            BlockSeed::PartialBlock { .. } => info!("Found a share!")
+            BlockSeed::PartialBlock { .. } => info!("Found a share!"),
         }
     }
 }
@@ -46,19 +57,19 @@ pub struct State {
     hasher: PowHasher,
 
     pub nonce_mask: u64,
-    pub nonce_fixed: u64
+    pub nonce_fixed: u64,
 }
 
 impl State {
     #[inline]
     pub fn new(id: usize, block_seed: BlockSeed) -> Result<Self, Error> {
         let pre_pow_hash;
-        let header_timestamp : u64;
+        let header_timestamp: u64;
         let header_target;
         let nonce_mask: u64;
         let nonce_fixed: u64;
         match block_seed {
-            BlockSeed::FullBlock( ref block ) => {
+            BlockSeed::FullBlock(ref block) => {
                 let header = &block.header.as_ref().ok_or("Header is missing")?;
 
                 header_target = target::u256_from_compact_target(header.bits);
@@ -69,7 +80,14 @@ impl State {
                 nonce_mask = 0xffffffffffffffffu64;
                 nonce_fixed = 0;
             }
-            BlockSeed::PartialBlock { ref header_hash, ref timestamp, ref target, nonce_fixed: fixed, nonce_mask: mask, ..} => {
+            BlockSeed::PartialBlock {
+                ref header_hash,
+                ref timestamp,
+                ref target,
+                nonce_fixed: fixed,
+                nonce_mask: mask,
+                ..
+            } => {
                 pre_pow_hash = Hash::new(header_hash.clone());
                 header_timestamp = timestamp.clone();
                 header_target = target.clone();
@@ -88,7 +106,16 @@ impl State {
                 .concat()
                 .as_slice(),
         );
-        Ok(Self { id, matrix, target: header_target, pow_hash_header, block: Arc::new(block_seed), hasher, nonce_mask, nonce_fixed})
+        Ok(Self {
+            id,
+            matrix,
+            target: header_target,
+            pow_hash_header,
+            block: Arc::new(block_seed),
+            hasher,
+            nonce_mask,
+            nonce_fixed,
+        })
     }
 
     #[inline(always)]

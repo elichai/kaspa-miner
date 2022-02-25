@@ -10,15 +10,15 @@ use tokio::sync::mpsc::Sender;
 use tokio::task::{self, JoinHandle};
 use tokio::time::MissedTickBehavior;
 
-use kaspa_miner::{PluginManager, WorkerSpec};
 use crate::pow::BlockSeed;
+use kaspa_miner::{PluginManager, WorkerSpec};
 
 type MinerHandler = std::thread::JoinHandle<Result<(), Error>>;
 
 #[derive(Clone)]
 enum WorkerCommand {
     Job(pow::State),
-    Close
+    Close,
 }
 
 #[allow(dead_code)]
@@ -38,12 +38,12 @@ impl Drop for MinerManager {
         self.logger_handle.abort();
         match self.block_channel.send(Some(WorkerCommand::Close)) {
             Ok(_) => {}
-            Err(_) => warn!("All workers are already dead")
+            Err(_) => warn!("All workers are already dead"),
         }
         while self.handles.len() > 0 {
             let handle = self.handles.pop().expect("There should be at least one");
             match handle.join() {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => panic!("Change failed to close gracefully: {:?}", e),
             };
         }
@@ -257,7 +257,7 @@ impl MinerManager {
     ) -> MinerHandler {
         let mut nonce = Wrapping(thread_rng().next_u64());
         let mut mask = Wrapping(0);
-        let mut fixed= Wrapping(0);
+        let mut fixed = Wrapping(0);
         std::thread::spawn(move || {
             (|| {
                 let mut state = None;
@@ -267,7 +267,9 @@ impl MinerManager {
                         state = match block_channel.wait_for_change() {
                             Ok(cmd) => match cmd {
                                 Some(WorkerCommand::Job(s)) => Some(s),
-                                Some(WorkerCommand::Close) => {return Ok(());},
+                                Some(WorkerCommand::Close) => {
+                                    return Ok(());
+                                }
                                 None => None,
                             },
                             Err(e) => {
@@ -275,7 +277,7 @@ impl MinerManager {
                                 return Ok(());
                             }
                         };
-                        if let Some(s) = &state  {
+                        if let Some(s) = &state {
                             mask = Wrapping(s.nonce_mask);
                             fixed = Wrapping(s.nonce_fixed);
                         }
@@ -292,10 +294,11 @@ impl MinerManager {
                             Err(e) => error!("Failed submitting block: ({})", e.to_string()),
                         };
                         match block_seed {
-                            BlockSeed::FullBlock(_) => {state = None;},
+                            BlockSeed::FullBlock(_) => {
+                                state = None;
+                            }
                             _ => {}
                         }
-
                     }
                     nonce += Wrapping(1);
                     // TODO: Is this really necessary? can we just use Relaxed?
@@ -305,7 +308,9 @@ impl MinerManager {
                         if let Some(new_cmd) = block_channel.get_changed()? {
                             state = match new_cmd {
                                 Some(WorkerCommand::Job(s)) => Some(s),
-                                Some(WorkerCommand::Close) => { return Ok(()); }
+                                Some(WorkerCommand::Close) => {
+                                    return Ok(());
+                                }
                                 None => None,
                             };
                         }

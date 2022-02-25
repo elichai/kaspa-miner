@@ -14,7 +14,6 @@ pub struct Opt {
     #[clap(short = 's', long = "kaspad-address", default_value = "127.0.0.1", help = "The IP of the kaspad instance")]
     pub kaspad_address: String,
 
-
     #[clap(long = "devfund-percent", help = "The percentage of blocks to send to the devfund (minimum 2%)", default_value = "2", parse(try_from_str = parse_devfund_percent))]
     pub devfund_percent: u16,
 

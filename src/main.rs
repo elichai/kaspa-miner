@@ -8,17 +8,17 @@ use std::ffi::OsStr;
 use clap::{App, FromArgMatches, IntoApp};
 use kaspa_miner::PluginManager;
 use log::{error, info};
+use rand::{thread_rng, RngCore};
 use std::fs;
-use std::sync::Arc;
 use std::sync::atomic::AtomicU16;
+use std::sync::Arc;
 use std::thread::sleep;
 use std::time::Duration;
-use rand::{RngCore, thread_rng};
 
 use crate::cli::Opt;
-use crate::client::Client;
 use crate::client::grpc::KaspadHandler;
 use crate::client::stratum::StratumHandler;
+use crate::client::Client;
 use crate::miner::MinerManager;
 use crate::target::Uint256;
 
@@ -57,25 +57,46 @@ fn filter_plugins(dirname: &str) -> Vec<String> {
     }
 }
 
-async fn get_client(kaspad_address: String, mining_address:String, mine_when_not_synced: bool, block_template_ctr: Arc<AtomicU16>) -> Result<Box<dyn Client + 'static>, Error> {
+async fn get_client(
+    kaspad_address: String,
+    mining_address: String,
+    mine_when_not_synced: bool,
+    block_template_ctr: Arc<AtomicU16>,
+) -> Result<Box<dyn Client + 'static>, Error> {
     if kaspad_address.starts_with("stratum+tcp://") {
         let (_schema, address) = kaspad_address.split_once("://").unwrap();
-        Ok(StratumHandler::connect(address.to_string().clone(), mining_address.clone(), mine_when_not_synced, Some(block_template_ctr.clone()))
-            .await?)
+        Ok(StratumHandler::connect(
+            address.to_string().clone(),
+            mining_address.clone(),
+            mine_when_not_synced,
+            Some(block_template_ctr.clone()),
+        )
+        .await?)
     } else if kaspad_address.starts_with("grpc://") {
-        Ok(KaspadHandler::connect(kaspad_address.clone(), mining_address.clone(), mine_when_not_synced, Some(block_template_ctr.clone()))
-            .await?)
+        Ok(KaspadHandler::connect(
+            kaspad_address.clone(),
+            mining_address.clone(),
+            mine_when_not_synced,
+            Some(block_template_ctr.clone()),
+        )
+        .await?)
     } else {
         Err("Did not recognize pool/grpc address schema".into())
     }
-
 }
 
-async fn client_main(opt: &Opt, block_template_ctr: Arc<AtomicU16>, plugin_manager: &PluginManager) -> Result<(), Error> {
-    let mut client  = get_client(
-        opt.kaspad_address.clone(), opt.mining_address.clone(),
-        opt.mine_when_not_synced, block_template_ctr.clone()
-    ).await?;
+async fn client_main(
+    opt: &Opt,
+    block_template_ctr: Arc<AtomicU16>,
+    plugin_manager: &PluginManager,
+) -> Result<(), Error> {
+    let mut client = get_client(
+        opt.kaspad_address.clone(),
+        opt.mining_address.clone(),
+        opt.mine_when_not_synced,
+        block_template_ctr.clone(),
+    )
+    .await?;
 
     if opt.devfund_percent > 0 {
         client.add_devfund(opt.devfund_address.clone(), opt.devfund_percent);
@@ -106,11 +127,11 @@ async fn main() -> Result<(), Error> {
     let block_template_ctr = Arc::new(AtomicU16::new((thread_rng().next_u64() % 10_000u64) as u16));
     if opt.devfund_percent > 0 {
         info!(
-                "devfund enabled, mining {}.{}% of the time to devfund address: {} ",
-                opt.devfund_percent / 100,
-                opt.devfund_percent % 100,
-                opt.devfund_address
-            );
+            "devfund enabled, mining {}.{}% of the time to devfund address: {} ",
+            opt.devfund_percent / 100,
+            opt.devfund_percent % 100,
+            opt.devfund_address
+        );
     }
     loop {
         match client_main(&opt, block_template_ctr.clone(), &plugin_manager).await {

@@ -1,11 +1,11 @@
 use async_trait::async_trait;
 use tokio::sync::mpsc::Sender;
 
-pub mod stratum;
 pub mod grpc;
+pub mod stratum;
 
-use crate::{Error, MinerManager};
 use crate::pow::BlockSeed;
+use crate::{Error, MinerManager};
 
 #[async_trait(?Send)]
 pub trait Client {
