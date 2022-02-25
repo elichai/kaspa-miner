@@ -140,7 +140,7 @@ impl<T: Clone> Receiver<T> {
             return Ok(v);
         }
         // wait for a notification of a new value
-        let _ = self.shared.notify_change.wait(lock);
+        let _lock = self.shared.notify_change.wait(lock);
         // Recheck if the sender is alive as it might've changed while waiting
         if !self.shared.sender_alive() {
             return Err(ChannelClosed(()));
