@@ -98,7 +98,8 @@ jobs:
       - name: Run cargo test regular features
         uses: actions-rs/cargo@v1
         with:
-          command: test -p kaspa-miner
+          command: test
+          args: -p kaspa-miner
 
       - name: Run cargo test no asm
         uses: actions-rs/cargo@v1
