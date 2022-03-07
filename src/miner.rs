@@ -17,7 +17,7 @@ use kaspa_miner::{PluginManager, WorkerSpec};
 type MinerHandler = std::thread::JoinHandle<Result<(), Error>>;
 
 #[cfg(any(target_os = "linux", target_os = "mac_os"))]
-extern fn signal_panic(_signal: nix::libc::c_int) {
+extern "C" fn signal_panic(_signal: nix::libc::c_int) {
     panic!("Forced shutdown");
 }
 
@@ -37,8 +37,12 @@ fn trigger_freeze_handler(kill_switch: Arc<AtomicBool>, handle: &MinerHandler) -
         sleep(Duration::from_millis(1000));
         if kill_switch.load(Ordering::SeqCst) {
             match nix::sys::pthread::pthread_kill(pthread_handle, nix::sys::signal::Signal::SIGUSR1) {
-                Ok(()) => { info!("Thread killed successfully") }
-                Err(e) => { info!("Error: {:?}", e) }
+                Ok(()) => {
+                    info!("Thread killed successfully")
+                }
+                Err(e) => {
+                    info!("Error: {:?}", e)
+                }
             }
         }
     })
@@ -48,12 +52,12 @@ fn trigger_freeze_handler(kill_switch: Arc<AtomicBool>, handle: &MinerHandler) -
 struct RawHandle(*mut std::ffi::c_void);
 
 #[cfg(any(target_os = "windows"))]
-unsafe impl Send for RawHandle{}
+unsafe impl Send for RawHandle {}
 
 #[cfg(any(target_os = "windows"))]
 fn register_freeze_handler() {}
 
-#[cfg(target_os="windows")]
+#[cfg(target_os = "windows")]
 fn trigger_freeze_handler(kill_switch: Arc<AtomicBool>, handle: &MinerHandler) -> std::thread::JoinHandle<()> {
     use std::os::windows::io::AsRawHandle;
     let raw_handle = RawHandle(handle.as_raw_handle());
@@ -64,7 +68,7 @@ fn trigger_freeze_handler(kill_switch: Arc<AtomicBool>, handle: &MinerHandler) -
         if kill_switch.load(Ordering::SeqCst) {
             kernel32::TerminateThread(ensure_full_move.0, 0);
         }
-    });
+    })
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "mac_os", target_os = "windows")))]
@@ -110,7 +114,7 @@ impl Drop for MinerManager {
                 Ok(res) => match res {
                     Ok(()) => {}
                     Err(e) => error!("Error when closing Worker: {}", e),
-                }
+                },
                 Err(_) => error!("Worker failed to close gracefully"),
             };
             kill_switch.fetch_and(false, Ordering::SeqCst);
