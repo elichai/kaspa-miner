@@ -1,6 +1,7 @@
 use std::num::Wrapping;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::thread::sleep;
 use std::time::Duration;
 
 use crate::{pow, watch, Error};
@@ -29,26 +30,45 @@ fn register_freeze_handler() {
 }
 
 #[cfg(any(target_os = "linux", target_os = "mac_os"))]
-fn trigger_freeze_handler(handle: &MinerHandler) {
+fn trigger_freeze_handler(kill_switch: Arc<AtomicBool>, handle: &MinerHandler) -> std::thread::JoinHandle<()> {
     use std::os::unix::thread::JoinHandleExt;
-
-    match nix::sys::pthread::pthread_kill(handle.as_pthread_t(), nix::sys::signal::Signal::SIGUSR1) {
-        Ok(()) => { info!("Thread killed successfully") }
-        Err(e) => { info!("Error: {:?}", e) }
-    }
+    let pthread_handle = handle.as_pthread_t();
+    std::thread::spawn(move || {
+        sleep(Duration::from_millis(1000));
+        if kill_switch.load(Ordering::SeqCst) {
+            match nix::sys::pthread::pthread_kill(pthread_handle, nix::sys::signal::Signal::SIGUSR1) {
+                Ok(()) => { info!("Thread killed successfully") }
+                Err(e) => { info!("Error: {:?}", e) }
+            }
+        }
+    })
 }
+
+#[cfg(any(target_os = "windows"))]
+struct RawHandle(*mut std::ffi::c_void);
+
+#[cfg(any(target_os = "windows"))]
+unsafe impl Send for RawHandle{}
 
 #[cfg(any(target_os = "windows"))]
 fn register_freeze_handler() {}
 
 #[cfg(target_os="windows")]
-fn trigger_freeze_handler(handle: &MinerHandler) {
+fn trigger_freeze_handler(kill_switch: Arc<AtomicBool>, handle: &MinerHandler) -> std::thread::JoinHandle<()> {
     use std::os::windows::io::AsRawHandle;
-    unsafe { kernel32::TerminateThread(handle.as_raw_handle(), 0) };
+    let raw_handle = RawHandle(handle.as_raw_handle());
+
+    std::thread::spawn(move || unsafe {
+        let ensure_full_move = raw_handle;
+        sleep(Duration::from_millis(1000));
+        if kill_switch.load(Ordering::SeqCst) {
+            kernel32::TerminateThread(ensure_full_move.0, 0);
+        }
+    });
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "mac_os", target_os = "windows")))]
-fn trigger_freeze_handler(handle: &MinerHandler) {
+fn trigger_freeze_handler(kill_switch: Arc<AtomicBool>, handle: &MinerHandler) {
     warn!("Freeze handler is not implemented. Frozen threads are ignored");
 }
 
@@ -84,7 +104,8 @@ impl Drop for MinerManager {
         }
         while !self.handles.is_empty() {
             let handle = self.handles.pop().expect("There should be at least one");
-            trigger_freeze_handler(&handle);
+            let kill_switch = Arc::new(AtomicBool::new(true));
+            trigger_freeze_handler(kill_switch.clone(), &handle);
             match handle.join() {
                 Ok(res) => match res {
                     Ok(()) => {}
@@ -92,6 +113,7 @@ impl Drop for MinerManager {
                 }
                 Err(_) => error!("Worker failed to close gracefully"),
             };
+            kill_switch.fetch_and(false, Ordering::SeqCst);
         }
     }
 }
