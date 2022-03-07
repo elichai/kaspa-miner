@@ -15,6 +15,48 @@ use kaspa_miner::{PluginManager, WorkerSpec};
 
 type MinerHandler = std::thread::JoinHandle<Result<(), Error>>;
 
+#[cfg(any(target_os = "linux", target_os = "mac_os"))]
+extern fn signal_panic(_signal: nix::libc::c_int) {
+    panic!("Forced shutdown");
+}
+
+#[cfg(any(target_os = "linux", target_os = "mac_os"))]
+fn register_freeze_handler() {
+    let handler = nix::sys::signal::SigHandler::Handler(signal_panic);
+    unsafe {
+        nix::sys::signal::signal(nix::sys::signal::Signal::SIGUSR1, handler).unwrap();
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "mac_os"))]
+fn trigger_freeze_handler(handle: &MinerHandler) {
+    use std::os::unix::thread::JoinHandleExt;
+
+    match nix::sys::pthread::pthread_kill(handle.as_pthread_t(), nix::sys::signal::Signal::SIGUSR1) {
+        Ok(()) => { info!("Thread killed successfully") }
+        Err(e) => { info!("Error: {:?}", e) }
+    }
+}
+
+#[cfg(any(target_os = "windows"))]
+fn register_freeze_handler() {}
+
+#[cfg(target_os="windows")]
+fn trigger_freeze_handler(handle: &MinerHandler) {
+    use std::os::windows::io::AsRawHandle;
+    unsafe { kernel32::TerminateThread(handle.as_raw_handle(), 0) };
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "mac_os", target_os = "windows")))]
+fn trigger_freeze_handler(handle: &MinerHandler) {
+    warn!("Freeze handler is not implemented. Frozen threads are ignored");
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "mac_os", target_os = "windows")))]
+fn register_freeze_handler() {
+    warn!("Freeze handler is not implemented. Frozen threads are ignored");
+}
+
 #[derive(Clone)]
 enum WorkerCommand {
     Job(Box<pow::State>),
@@ -42,9 +84,13 @@ impl Drop for MinerManager {
         }
         while !self.handles.is_empty() {
             let handle = self.handles.pop().expect("There should be at least one");
+            trigger_freeze_handler(&handle);
             match handle.join() {
-                Ok(_) => {}
-                Err(e) => panic!("Change failed to close gracefully: {:?}", e),
+                Ok(res) => match res {
+                    Ok(()) => {}
+                    Err(e) => error!("Error when closing Worker: {}", e),
+                }
+                Err(_) => error!("Worker failed to close gracefully"),
             };
         }
     }
@@ -60,6 +106,7 @@ const LOG_RATE: Duration = Duration::from_secs(10);
 
 impl MinerManager {
     pub fn new(send_channel: Sender<BlockSeed>, n_cpus: Option<u16>, manager: &PluginManager) -> Self {
+        register_freeze_handler();
         let hashes_tried = Arc::new(AtomicU64::new(0));
         let (send, recv) = watch::channel(None);
         let mut handles =
