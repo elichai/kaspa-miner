@@ -52,12 +52,12 @@ __device__ __inline__ void amul4bit(uint32_t packed_vec1[32], uint32_t packed_ve
 extern "C" {
 
 
-    __global__ void heavy_hash(const uint64_t nonces_len, ulonglong4* states, uint64_t *final_nonce) {
+    __global__ void heavy_hash(const uint64_t nonce_mask, const uint64_t nonce_fixed, const uint64_t nonces_len, ulonglong4* states, uint64_t *final_nonce) {
         // assuming header_len is 72
         int nonceId = threadIdx.x + blockIdx.x*blockDim.x;
         if (nonceId < nonces_len) {
             if (nonceId == 0) *final_nonce = 0;
-            uint64_t nonce = xoshiro256_next(states + nonceId);
+            uint64_t nonce = (xoshiro256_next(states + nonceId) & nonce_mask) | nonce_fixed;
             // header
             uint8_t input[80];
             memcpy(input, hash_header, HASH_HEADER_SIZE);

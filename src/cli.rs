@@ -14,7 +14,6 @@ pub struct Opt {
     #[clap(short = 's', long = "kaspad-address", default_value = "127.0.0.1", help = "The IP of the kaspad instance")]
     pub kaspad_address: String,
 
-
     #[clap(long = "devfund-percent", help = "The percentage of blocks to send to the devfund (minimum 2%)", default_value = "2", parse(try_from_str = parse_devfund_percent))]
     pub devfund_percent: u16,
 
@@ -70,7 +69,7 @@ impl Opt {
             self.kaspad_address = "127.0.0.1".to_string();
         }
 
-        if !self.kaspad_address.starts_with("grpc://") {
+        if !self.kaspad_address.contains("://") {
             IpAddr::from_str(&self.kaspad_address)?;
             let port = self.port();
             self.kaspad_address = format!("grpc://{}:{}", self.kaspad_address, port);

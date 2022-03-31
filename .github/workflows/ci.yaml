@@ -11,7 +11,7 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v2
 
-      - name: Install nightly toolchain
+      - name: Install stable toolchain
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
@@ -23,7 +23,7 @@ jobs:
         with:
           cuda: '11.2.2'
           method: 'network'
-          sub-packages: '["nvcc"]'
+          sub-packages: '["nvcc", "cudart"]'
 
       - name: Cache
         uses: actions/cache@v2
@@ -75,14 +75,16 @@ jobs:
         uses: Jimver/cuda-toolkit@v0.2.5
         with:
           cuda: '11.2.2'
-          method: 'local'
+          method: 'network'
+          sub-packages: '["nvcc", "cudart"]'
 
       - name: Install CUDA Windows
         if: runner.os == 'Windows'
         uses: Jimver/cuda-toolkit@v0.2.5
         with:
           cuda: '11.5.1'
-          method: 'local'
+          method: 'network'
+          sub-packages: '["nvcc", "cudart"]'
 
       - name: Cache
         uses: actions/cache@v2
@@ -99,26 +101,32 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
+          args: -p kaspa-miner
 
       - name: Run cargo test no asm
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --features=no-asm
+          args: -p kaspa-miner --features=no-asm
 
 
       - name: Run cargo test no parking_lot
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --no-default-features
+          args: -p kaspa-miner --no-default-features
 
       - name: Run cargo test shuttle
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --no-default-features --features=shuttle
+          args: -p kaspa-miner --no-default-features --features=shuttle
 
+      - name: Run cargo test for kaspaopencl
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -p kaspaopencl
 
 
   test-release:
@@ -154,14 +162,16 @@ jobs:
         uses: Jimver/cuda-toolkit@v0.2.5
         with:
           cuda: '11.2.2'
-          method: 'local'
+          method: 'network'
+          sub-packages: '["nvcc", "cudart"]'
 
       - name: Install CUDA Windows
         if: runner.os == 'Windows'
         uses: Jimver/cuda-toolkit@v0.2.5
         with:
           cuda: '11.5.1'
-          method: 'local'
+          method: 'network'
+          sub-packages: '["nvcc", "cudart"]'
 
       - name: Cache
         uses: actions/cache@v2
@@ -178,26 +188,31 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --release
+          args: --release -p kaspa-miner
 
       - name: Run cargo test release no asm
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --features=no-asm --release
+          args: --features=no-asm --release -p kaspa-miner
 
       - name: Run cargo test release no parking_lot
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --no-default-features --release
+          args: --no-default-features --release -p kaspa-miner
 
       - name: Run cargo test release shuttle
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --no-default-features --features=shuttle --release
+          args: --no-default-features --features=shuttle --release -p kaspa-miner
 
+      - name: Run cargo test for kaspaopencl
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --release -p kaspaopencl
   lints:
     name: Lints
     runs-on: ubuntu-latest
@@ -205,7 +220,7 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v2
 
-      - name: Install nightly toolchain
+      - name: Install stable toolchain
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
@@ -218,7 +233,7 @@ jobs:
         with:
           cuda: '11.2.2'
           method: 'network'
-          sub-packages: '["nvcc"]'
+          sub-packages: '["nvcc", "cudart"]'
 
       - name: Cache
         uses: actions/cache@v2

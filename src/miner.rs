@@ -1,9 +1,9 @@
 use std::num::Wrapping;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::thread::sleep;
 use std::time::Duration;
 
-use crate::proto::{KaspadMessage, RpcBlock};
 use crate::{pow, watch, Error};
 use log::{error, info, warn};
 use rand::{thread_rng, RngCore};
@@ -11,15 +11,87 @@ use tokio::sync::mpsc::Sender;
 use tokio::task::{self, JoinHandle};
 use tokio::time::MissedTickBehavior;
 
+use crate::pow::BlockSeed;
 use kaspa_miner::{PluginManager, WorkerSpec};
 
 type MinerHandler = std::thread::JoinHandle<Result<(), Error>>;
 
+#[cfg(any(target_os = "linux", target_os = "mac_os"))]
+extern "C" fn signal_panic(_signal: nix::libc::c_int) {
+    panic!("Forced shutdown");
+}
+
+#[cfg(any(target_os = "linux", target_os = "mac_os"))]
+fn register_freeze_handler() {
+    let handler = nix::sys::signal::SigHandler::Handler(signal_panic);
+    unsafe {
+        nix::sys::signal::signal(nix::sys::signal::Signal::SIGUSR1, handler).unwrap();
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "mac_os"))]
+fn trigger_freeze_handler(kill_switch: Arc<AtomicBool>, handle: &MinerHandler) -> std::thread::JoinHandle<()> {
+    use std::os::unix::thread::JoinHandleExt;
+    let pthread_handle = handle.as_pthread_t();
+    std::thread::spawn(move || {
+        sleep(Duration::from_millis(1000));
+        if kill_switch.load(Ordering::SeqCst) {
+            match nix::sys::pthread::pthread_kill(pthread_handle, nix::sys::signal::Signal::SIGUSR1) {
+                Ok(()) => {
+                    info!("Thread killed successfully")
+                }
+                Err(e) => {
+                    info!("Error: {:?}", e)
+                }
+            }
+        }
+    })
+}
+
+#[cfg(any(target_os = "windows"))]
+struct RawHandle(*mut std::ffi::c_void);
+
+#[cfg(any(target_os = "windows"))]
+unsafe impl Send for RawHandle {}
+
+#[cfg(any(target_os = "windows"))]
+fn register_freeze_handler() {}
+
+#[cfg(target_os = "windows")]
+fn trigger_freeze_handler(kill_switch: Arc<AtomicBool>, handle: &MinerHandler) -> std::thread::JoinHandle<()> {
+    use std::os::windows::io::AsRawHandle;
+    let raw_handle = RawHandle(handle.as_raw_handle());
+
+    std::thread::spawn(move || unsafe {
+        let ensure_full_move = raw_handle;
+        sleep(Duration::from_millis(1000));
+        if kill_switch.load(Ordering::SeqCst) {
+            kernel32::TerminateThread(ensure_full_move.0, 0);
+        }
+    })
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "mac_os", target_os = "windows")))]
+fn trigger_freeze_handler(kill_switch: Arc<AtomicBool>, handle: &MinerHandler) {
+    warn!("Freeze handler is not implemented. Frozen threads are ignored");
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "mac_os", target_os = "windows")))]
+fn register_freeze_handler() {
+    warn!("Freeze handler is not implemented. Frozen threads are ignored");
+}
+
+#[derive(Clone)]
+enum WorkerCommand {
+    Job(Box<pow::State>),
+    Close,
+}
+
 #[allow(dead_code)]
 pub struct MinerManager {
     handles: Vec<MinerHandler>,
-    block_channel: watch::Sender<Option<pow::State>>,
-    send_channel: Sender<KaspadMessage>,
+    block_channel: watch::Sender<Option<WorkerCommand>>,
+    send_channel: Sender<BlockSeed>,
     logger_handle: JoinHandle<()>,
     is_synced: bool,
     hashes_tried: Arc<AtomicU64>,
@@ -28,7 +100,25 @@ pub struct MinerManager {
 
 impl Drop for MinerManager {
     fn drop(&mut self) {
+        info!("Closing miner");
         self.logger_handle.abort();
+        match self.block_channel.send(Some(WorkerCommand::Close)) {
+            Ok(_) => {}
+            Err(_) => warn!("All workers are already dead"),
+        }
+        while !self.handles.is_empty() {
+            let handle = self.handles.pop().expect("There should be at least one");
+            let kill_switch = Arc::new(AtomicBool::new(true));
+            trigger_freeze_handler(kill_switch.clone(), &handle);
+            match handle.join() {
+                Ok(res) => match res {
+                    Ok(()) => {}
+                    Err(e) => error!("Error when closing Worker: {}", e),
+                },
+                Err(_) => error!("Worker failed to close gracefully"),
+            };
+            kill_switch.fetch_and(false, Ordering::SeqCst);
+        }
     }
 }
 
@@ -41,7 +131,8 @@ pub fn get_num_cpus(n_cpus: Option<u16>) -> u16 {
 const LOG_RATE: Duration = Duration::from_secs(10);
 
 impl MinerManager {
-    pub fn new(send_channel: Sender<KaspadMessage>, n_cpus: Option<u16>, manager: &PluginManager) -> Self {
+    pub fn new(send_channel: Sender<BlockSeed>, n_cpus: Option<u16>, manager: &PluginManager) -> Self {
+        register_freeze_handler();
         let hashes_tried = Arc::new(AtomicU64::new(0));
         let (send, recv) = watch::channel(None);
         let mut handles =
@@ -67,9 +158,9 @@ impl MinerManager {
     }
 
     fn launch_cpu_threads(
-        send_channel: Sender<KaspadMessage>,
+        send_channel: Sender<BlockSeed>,
         hashes_tried: Arc<AtomicU64>,
-        work_channel: watch::Receiver<Option<pow::State>>,
+        work_channel: watch::Receiver<Option<WorkerCommand>>,
         n_cpus: Option<u16>,
     ) -> impl Iterator<Item = MinerHandler> {
         let n_cpus = get_num_cpus(n_cpus);
@@ -79,9 +170,9 @@ impl MinerManager {
     }
 
     fn launch_gpu_threads(
-        send_channel: Sender<KaspadMessage>,
+        send_channel: Sender<BlockSeed>,
         hashes_tried: Arc<AtomicU64>,
-        work_channel: watch::Receiver<Option<pow::State>>,
+        work_channel: watch::Receiver<Option<WorkerCommand>>,
         manager: &PluginManager,
     ) -> Vec<MinerHandler> {
         let mut vec = Vec::<MinerHandler>::new();
@@ -97,12 +188,12 @@ impl MinerManager {
         vec
     }
 
-    pub async fn process_block(&mut self, block: Option<RpcBlock>) -> Result<(), Error> {
+    pub async fn process_block(&mut self, block: Option<BlockSeed>) -> Result<(), Error> {
         let state = match block {
             Some(b) => {
                 self.is_synced = true;
                 let id = self.current_state_id.fetch_add(1, Ordering::SeqCst);
-                Some(pow::State::new(id, b)?)
+                Some(WorkerCommand::Job(Box::new(pow::State::new(id, b)?)))
             }
             None => {
                 if !self.is_synced {
@@ -120,8 +211,8 @@ impl MinerManager {
 
     #[allow(unreachable_code)]
     fn launch_gpu_miner(
-        send_channel: Sender<KaspadMessage>,
-        mut block_channel: watch::Receiver<Option<pow::State>>,
+        send_channel: Sender<BlockSeed>,
+        mut block_channel: watch::Receiver<Option<WorkerCommand>>,
         hashes_tried: Arc<AtomicU64>,
         spec: Box<dyn WorkerSpec>,
     ) -> MinerHandler {
@@ -137,7 +228,17 @@ impl MinerManager {
                 loop {
                     nonces[0] = 0;
                     if state.is_none() {
-                        state = block_channel.wait_for_change()?;
+                        state = match block_channel.wait_for_change() {
+                            Ok(cmd) => match cmd {
+                                Some(WorkerCommand::Job(s)) => Some(s),
+                                Some(WorkerCommand::Close) => {return Ok(());}
+                                None => None,
+                            },
+                            Err(e) => {
+                                info!("{}: GPU thread crashed: {}", gpu_work.id(), e.to_string());
+                                return Ok(());
+                            }
+                        };
                     }
                     let state_ref = match &state {
                         Some(s) => {
@@ -151,15 +252,14 @@ impl MinerManager {
 
                     gpu_work.copy_output_to(&mut nonces)?;
                     if nonces[0] != 0 {
-                        if let Some(block) = state_ref.generate_block_if_pow(nonces[0]) {
-                            let block_hash = block
-                                .block_hash()
-                                .expect("We just got it from the state, we should be able to hash it");
-                            match send_channel.blocking_send(KaspadMessage::submit_block(block)) {
-                                Ok(()) => info!("Found a block: {:x}", block_hash),
-                                Err(e) => error!("Failed submitting block: {:x} ({})", block_hash, e.to_string()),
+                        if let Some(block_seed) = state_ref.generate_block_if_pow(nonces[0]) {
+                            match send_channel.blocking_send(block_seed.clone()) {
+                                Ok(()) => block_seed.report_block(),
+                                Err(e) => error!("Failed submitting block: ({})", e.to_string()),
                             };
-                            state = None;
+                            if let BlockSeed::FullBlock(_) = block_seed {
+                                state = None;
+                            }
                             nonces[0] = 0;
                             hashes_tried.fetch_add(gpu_work.get_workload().try_into().unwrap(), Ordering::AcqRel);
                             continue;
@@ -203,8 +303,12 @@ impl MinerManager {
                     hashes_tried.fetch_add(gpu_work.get_workload().try_into().unwrap(), Ordering::AcqRel);
 
                     {
-                        if let Some(new_state) = block_channel.get_changed()? {
-                            state = new_state;
+                        if let Some(new_cmd) = block_channel.get_changed()? {
+                            state = match new_cmd {
+                                Some(WorkerCommand::Job(s)) => Some(s),
+                                Some(WorkerCommand::Close) => {return Ok(());}
+                                None => None,
+                            };
                         }
                     }
                 }
@@ -218,37 +322,66 @@ impl MinerManager {
     }
 
     #[allow(unreachable_code)]
-    pub fn launch_cpu_miner(
-        send_channel: Sender<KaspadMessage>,
-        mut block_channel: watch::Receiver<Option<pow::State>>,
+    fn launch_cpu_miner(
+        send_channel: Sender<BlockSeed>,
+        mut block_channel: watch::Receiver<Option<WorkerCommand>>,
         hashes_tried: Arc<AtomicU64>,
     ) -> MinerHandler {
         let mut nonce = Wrapping(thread_rng().next_u64());
+        let mut mask = Wrapping(0);
+        let mut fixed = Wrapping(0);
         std::thread::spawn(move || {
             (|| {
                 let mut state = None;
+
                 loop {
                     if state.is_none() {
-                        state = block_channel.wait_for_change()?;
+                        state = match block_channel.wait_for_change() {
+                            Ok(cmd) => match cmd {
+                                Some(WorkerCommand::Job(s)) => Some(s),
+                                Some(WorkerCommand::Close) => {
+                                    return Ok(());
+                                }
+                                None => None,
+                            },
+                            Err(e) => {
+                                info!("CPU thread crashed: {}", e.to_string());
+                                return Ok(());
+                            }
+                        };
+                        if let Some(s) = &state {
+                            mask = Wrapping(s.nonce_mask);
+                            fixed = Wrapping(s.nonce_fixed);
+                        }
                     }
                     let state_ref = match state.as_mut() {
                         Some(s) => s,
                         None => continue,
                     };
-                    if let Some(block) = state_ref.generate_block_if_pow(nonce.0) {
-                        let block_hash =
-                            block.block_hash().expect("We just got it from the state, we should be able to hash it");
-                        send_channel.blocking_send(KaspadMessage::submit_block(block))?;
-                        info!("Found a block: {:x}", block_hash);
-                        state = None;
+                    nonce = (nonce & mask) | fixed;
+
+                    if let Some(block_seed) = state_ref.generate_block_if_pow(nonce.0) {
+                        match send_channel.blocking_send(block_seed.clone()) {
+                            Ok(()) => block_seed.report_block(),
+                            Err(e) => error!("Failed submitting block: ({})", e.to_string()),
+                        };
+                        if let BlockSeed::FullBlock(_) = block_seed {
+                            state = None;
+                        }
                     }
                     nonce += Wrapping(1);
                     // TODO: Is this really necessary? can we just use Relaxed?
                     hashes_tried.fetch_add(1, Ordering::AcqRel);
 
                     if nonce.0 % 128 == 0 {
-                        if let Some(new_state) = block_channel.get_changed()? {
-                            state = new_state;
+                        if let Some(new_cmd) = block_channel.get_changed()? {
+                            state = match new_cmd {
+                                Some(WorkerCommand::Job(s)) => Some(s),
+                                Some(WorkerCommand::Close) => {
+                                    return Ok(());
+                                }
+                                None => None,
+                            };
                         }
                     }
                 }

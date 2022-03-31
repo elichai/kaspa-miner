@@ -100,7 +100,7 @@ pub trait Worker {
     fn id(&self) -> String;
     fn load_block_constants(&mut self, hash_header: &[u8; 72], matrix: &[[u16; 64]; 64], target: &[u64; 4]);
 
-    fn calculate_hash(&mut self, nonces: Option<&Vec<u64>>);
+    fn calculate_hash(&mut self, nonces: Option<&Vec<u64>>, nonce_mask: u64, nonce_fixed: u64);
     fn sync(&self) -> Result<(), Error>;
 
     fn get_workload(&self) -> usize;

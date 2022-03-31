@@ -2,6 +2,7 @@ use crate::Error;
 use cust::context::CurrentContext;
 use cust::device::DeviceAttribute;
 use cust::function::Function;
+use cust::module::{ModuleJitOption, OptLevel};
 use cust::prelude::*;
 use kaspa_miner::xoshiro256starstar::Xoshiro256StarStar;
 use kaspa_miner::Worker;
@@ -49,17 +50,17 @@ impl<'kernel> Kernel<'kernel> {
 }
 
 pub struct CudaGPUWorker<'gpu> {
-    device_id: u32,
-    _context: Context,
+    // NOTE: The order is important! context must be closed last
+    heavy_hash_kernel: Kernel<'gpu>,
+    stream: Stream,
     _module: Arc<Module>,
 
-    pub workload: usize,
-    stream: Stream,
     rand_state: DeviceBuffer<[u64; 4]>,
-
     final_nonce_buff: DeviceBuffer<u64>,
 
-    heavy_hash_kernel: Kernel<'gpu>,
+    device_id: u32,
+    pub workload: usize,
+    _context: Context,
 }
 
 impl<'gpu> Worker for CudaGPUWorker<'gpu> {
@@ -81,7 +82,7 @@ impl<'gpu> Worker for CudaGPUWorker<'gpu> {
     }
 
     #[inline(always)]
-    fn calculate_hash(&mut self, _nonces: Option<&Vec<u64>>) {
+    fn calculate_hash(&mut self, _nonces: Option<&Vec<u64>>, nonce_mask: u64, nonce_fixed: u64) {
         let func = &self.heavy_hash_kernel.func;
         let stream = &self.stream;
 
@@ -91,6 +92,7 @@ impl<'gpu> Worker for CudaGPUWorker<'gpu> {
                     self.heavy_hash_kernel.grid_size, self.heavy_hash_kernel.block_size,
                     0, stream
                 >>>(
+                    nonce_mask, nonce_fixed,
                     self.rand_state.len(),
                     self.rand_state.as_device_ptr(),
                     self.final_nonce_buff.as_device_ptr()
@@ -122,37 +124,38 @@ impl<'gpu> CudaGPUWorker<'gpu> {
         info!("Starting a CUDA worker");
         let sync_flag = match blocking_sync {
             true => ContextFlags::SCHED_BLOCKING_SYNC,
-            false => ContextFlags::SCHED_AUTO
+            false => ContextFlags::SCHED_AUTO,
         };
         let device = Device::get_device(device_id).unwrap();
-        let _context = Context::create_and_push(ContextFlags::MAP_HOST | sync_flag, device)?;
+        let _context = Context::new(device)?;
+        _context.set_flags(sync_flag)?;
 
         let major = device.get_attribute(DeviceAttribute::ComputeCapabilityMajor)?;
         let minor = device.get_attribute(DeviceAttribute::ComputeCapabilityMinor)?;
         let _module: Arc<Module>;
         info!("Device #{} compute version is {}.{}", device_id, major, minor);
         if major > 8 || (major == 8 && minor >= 6) {
-            _module = Arc::new(Module::from_str(PTX_86).map_err(|e| {
+            _module = Arc::new(Module::from_ptx(PTX_86, &[ModuleJitOption::OptLevel(OptLevel::O4)]).map_err(|e| {
                 error!("Error loading PTX: {}", e);
                 e
             })?);
         } else if major > 7 || (major == 7 && minor >= 5) {
-            _module = Arc::new(Module::from_str(PTX_75).map_err(|e| {
+            _module = Arc::new(Module::from_ptx(PTX_75, &[ModuleJitOption::OptLevel(OptLevel::O4)]).map_err(|e| {
                 error!("Error loading PTX: {}", e);
                 e
             })?);
         } else if major > 6 || (major == 6 && minor >= 1) {
-            _module = Arc::new(Module::from_str(PTX_61).map_err(|e| {
+            _module = Arc::new(Module::from_ptx(PTX_61, &[ModuleJitOption::OptLevel(OptLevel::O4)]).map_err(|e| {
                 error!("Error loading PTX: {}", e);
                 e
             })?);
         } else if major >= 3 {
-            _module = Arc::new(Module::from_str(PTX_30).map_err(|e| {
+            _module = Arc::new(Module::from_ptx(PTX_30, &[ModuleJitOption::OptLevel(OptLevel::O4)]).map_err(|e| {
                 error!("Error loading PTX: {}", e);
                 e
             })?);
         } else if major >= 2 {
-            _module = Arc::new(Module::from_str(PTX_20).map_err(|e| {
+            _module = Arc::new(Module::from_ptx(PTX_20, &[ModuleJitOption::OptLevel(OptLevel::O4)]).map_err(|e| {
                 error!("Error loading PTX: {}", e);
                 e
             })?);
@@ -177,7 +180,7 @@ impl<'gpu> CudaGPUWorker<'gpu> {
         info!("GPU #{} Chosen workload: {}", device_id, chosen_workload);
         heavy_hash_kernel.set_workload(chosen_workload as u32);
 
-        let mut rand_state = unsafe { DeviceBuffer::<[u64; 4]>::zeroed(chosen_workload).unwrap() };
+        let mut rand_state = DeviceBuffer::<[u64; 4]>::zeroed(chosen_workload).unwrap();
 
         let final_nonce_buff = vec![0u64; 1].as_slice().as_dbuf()?;
 
@@ -195,7 +198,7 @@ impl<'gpu> CudaGPUWorker<'gpu> {
         Ok(Self {
             device_id,
             _context,
-            _module: Arc::clone(&_module),
+            _module,
             workload: chosen_workload,
             stream,
             rand_state,
@@ -203,16 +206,4 @@ impl<'gpu> CudaGPUWorker<'gpu> {
             heavy_hash_kernel,
         })
     }
-
-    /*pub(crate) fn check_random(&self) -> Result<(),Error> {
-        let mut nonces = vec![0u64; GPU_THREADS];
-        self.nonces_buff.copy_to(&mut nonces)?;
-        println!("Nonce: {}", nonces[0]);
-        Ok(())
-    }*/
-
-    /*#[inline(always)]
-    pub(crate) fn copy_input_from(&mut self, nonces: &Vec<u64>){
-        self.nonces_buff.copy_from(nonces);
-    }*/
 }

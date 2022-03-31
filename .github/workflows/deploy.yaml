@@ -35,15 +35,19 @@ jobs:
 
       - name: Install CUDA Linux
         if: runner.os == 'Linux'
-        uses: tmrlvi/cuda-toolkit@master
+        uses: Jimver/cuda-toolkit@v0.2.5
         with:
           cuda: '11.2.2'
+          method: 'network'
+          sub-packages: '["nvcc", "cudart"]'
 
       - name: Install CUDA Windows
         if: runner.os == 'Windows'
-        uses: tmrlvi/cuda-toolkit@master
+        uses: Jimver/cuda-toolkit@v0.2.5
         with:
           cuda: '11.5.1'
+          method: 'network'
+          sub-packages: '["nvcc", "cudart"]'
 
       - name: Build on Linux GNU
         if: matrix.os == 'ubuntu-18.04'
@@ -122,9 +126,11 @@ jobs:
 
       - name: Install CUDA Linux
         if: runner.os == 'Linux'
-        uses: tmrlvi/cuda-toolkit@master
+        uses: Jimver/cuda-toolkit@v0.2.5
         with:
           cuda: '11.2.2'
+          method: 'network'
+          sub-packages: '["nvcc", "cudart"]'
 
       - name: Build ${{ matrix.itegration }} Script
         run: |

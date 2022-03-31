@@ -49,7 +49,10 @@ impl Worker for OpenCLGPUWorker {
 
     fn load_block_constants(&mut self, hash_header: &[u8; 72], matrix: &[[u16; 64]; 64], target: &[u64; 4]) {
         let cl_uchar_matrix = match self.experimental_amd {
-            true => matrix.iter().flat_map(|row| row.chunks(2).map(|v| ((v[0] << 4) | v[1]) as cl_uchar)).collect::<Vec<cl_uchar>>(),
+            true => matrix
+                .iter()
+                .flat_map(|row| row.chunks(2).map(|v| ((v[0] << 4) | v[1]) as cl_uchar))
+                .collect::<Vec<cl_uchar>>(),
             false => matrix.iter().flat_map(|row| row.map(|v| v as cl_uchar)).collect::<Vec<cl_uchar>>(),
         };
         self.queue
@@ -82,7 +85,7 @@ impl Worker for OpenCLGPUWorker {
         }
     }
 
-    fn calculate_hash(&mut self, _nonces: Option<&Vec<u64>>) {
+    fn calculate_hash(&mut self, _nonces: Option<&Vec<u64>>, nonce_mask: u64, nonce_fixed: u64) {
         if self.random == NonceGenEnum::Lean {
             self.queue
                 .enqueue_write_buffer(&mut self.random_state, CL_BLOCKING, 0, &[thread_rng().next_u64()], &[])
@@ -93,9 +96,11 @@ impl Worker for OpenCLGPUWorker {
         }
         let random_type: cl_uchar = match self.random {
             NonceGenEnum::Lean => 0,
-            NonceGenEnum::Xoshiro => 1
+            NonceGenEnum::Xoshiro => 1,
         };
         let kernel_event = ExecuteKernel::new(&self.heavy_hash)
+            .set_arg(&nonce_mask)
+            .set_arg(&nonce_fixed)
             .set_arg(&self.hash_header)
             .set_arg(&self.matrix)
             .set_arg(&self.target)
@@ -185,12 +190,10 @@ impl OpenCLGPUWorker {
             false => "",
         };
 
-        let experimental_amd_use = match device.name().unwrap_or_else(|_| "Unknown".into()).to_lowercase().as_str() {
-            "tahiti" => false,
-            "ellesmere" => false,
-            "gfx1010" => false,
-            _ => true,
-        };
+        let experimental_amd_use = !matches!(
+            device.name().unwrap_or_else(|_| "Unknown".into()).to_lowercase().as_str(),
+            "tahiti" | "ellesmere" | "gfx1010"
+        );
 
         let program = match use_binary {
             true => {
@@ -202,7 +205,9 @@ impl OpenCLGPUWorker {
                         &[include_bytes!("../resources/bin/ellesmere_kaspa-opencl.bin")],
                         "",
                     )
-                    .unwrap_or_else(|e| panic!("{}::Program::create_and_build_from_binary failed: {}", name, String::from(e))),
+                    .unwrap_or_else(|e| {
+                        panic!("{}::Program::create_and_build_from_binary failed: {}", name, String::from(e))
+                    }),
                     "gfx906" => Program::create_and_build_from_binary(
                         &context,
                         &[include_bytes!("../resources/bin/gfx906_kaspa-opencl.bin")],
@@ -250,7 +255,7 @@ impl OpenCLGPUWorker {
                         &[include_bytes!("../resources/bin/gfx1032_kaspa-opencl.bin")],
                         "",
                     )
-                    .unwrap_or_else(|e| panic!("{}::Program::create_and_build_from_binary failed: {}", name, e.to_string())),
+                    .unwrap_or_else(|e| panic!("{}::Program::create_and_build_from_binary failed: {}", name, e)),
                     other => {
                         panic!(
                             "{}: Found device {} without prebuilt binary. Trying to run without --opencl-amd-binary.",
@@ -260,12 +265,11 @@ impl OpenCLGPUWorker {
                 }
             }
             false => from_source(&context, &device, options)
-                .unwrap_or_else(|e| panic!("{}::Program::create_and_build_from_binary failed: {}", name, e.to_string())),
+                .unwrap_or_else(|e| panic!("{}::Program::create_and_build_from_binary failed: {}", name, e)),
         };
         info!("Kernels: {:?}", program.kernel_names());
-        let heavy_hash = Kernel::create(&program, "heavy_hash")
-            .unwrap_or_else(|_| panic!("{}::Kernel::create failed", name));
-
+        let heavy_hash =
+            Kernel::create(&program, "heavy_hash").unwrap_or_else(|_| panic!("{}::Kernel::create failed", name));
 
         let queue =
             CommandQueue::create_with_properties(&context, device.id(), CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, 0)
@@ -373,7 +377,8 @@ fn from_source(context: &Context, device: &Device, options: &str) -> Result<Prog
                     true => c,
                     false => '_',
                 })
-                .collect::<String>().to_uppercase()
+                .collect::<String>()
+                .to_uppercase()
         ),
         Err(_) => String::new(),
     };
@@ -391,7 +396,7 @@ fn from_source(context: &Context, device: &Device, options: &str) -> Result<Prog
         Ok(_) => {
             let device_name = device.name().unwrap_or_else(|_| "Unknown".into()).to_lowercase();
             format!("-D OPENCL_PLATFORM_AMD -D __{}__ ", device_name)
-        },
+        }
         Err(_) => String::new(),
     };
 
