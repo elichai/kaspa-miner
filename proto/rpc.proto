@@ -52,6 +52,9 @@ message RpcBlockVerboseData{
   bool isHeaderOnly = 15;
   uint64 blueScore = 16;
   repeated string childrenHashes = 17;
+  repeated string mergeSetBluesHashes = 18;
+  repeated string mergeSetRedsHashes = 19;
+  bool isChainBlock = 20;
 }
 
 message RpcTransaction {
@@ -129,6 +132,7 @@ message GetCurrentNetworkResponseMessage{
 // See: GetBlockTemplateRequestMessage
 message SubmitBlockRequestMessage{
   RpcBlock block = 2;
+  bool allowNonDAABlocks = 3;
 }
 
 message SubmitBlockResponseMessage{
@@ -148,6 +152,7 @@ message SubmitBlockResponseMessage{
 message GetBlockTemplateRequestMessage{
   // Which kaspa address should the coinbase block reward transaction pay into
   string payAddress = 1;
+  string extraData = 2;
 }
 
 message GetBlockTemplateResponseMessage{
@@ -498,6 +503,36 @@ message GetUtxosByAddressesResponseMessage {
   RPCError error = 1000;
 }
 
+// GetBalanceByAddressRequest returns the total balance in unspent transactions towards a given address
+//
+// This call is only available when this kaspad was started with `--utxoindex`
+message GetBalanceByAddressRequestMessage {
+  string address = 1;
+}
+
+message GetBalanceByAddressResponseMessage {
+  uint64 balance = 1;
+
+  RPCError error = 1000;
+}
+
+message GetBalancesByAddressesRequestMessage {
+  repeated string addresses = 1;
+}
+
+message BalancesByAddressEntry{
+  string address = 1;
+  uint64 balance = 2;
+
+  RPCError error = 1000;
+}
+
+message GetBalancesByAddressesResponseMessage {
+  repeated BalancesByAddressEntry entries = 1;
+
+  RPCError error = 1000;
+}
+
 // GetVirtualSelectedParentBlueScoreRequestMessage requests the blue score of the current selected parent
 // of the virtual block.
 message GetVirtualSelectedParentBlueScoreRequestMessage {
@@ -618,6 +653,24 @@ message EstimateNetworkHashesPerSecondRequestMessage{
 message EstimateNetworkHashesPerSecondResponseMessage{
   uint64 networkHashesPerSecond = 1;
   RPCError error = 1000;
+}
+
+// NotifyNewBlockTemplateRequestMessage registers this connection for
+// NewBlockTemplate notifications.
+//
+// See: NewBlockTemplateNotificationMessage
+message NotifyNewBlockTemplateRequestMessage {
+}
+
+message NotifyNewBlockTemplateResponseMessage {
+  RPCError error = 1000;
+}
+
+// NewBlockTemplateNotificationMessage is sent whenever a new updated block template is
+// available for miners.
+//
+// See NotifyNewBlockTemplateRequestMessage
+message NewBlockTemplateNotificationMessage {
 }
 
 

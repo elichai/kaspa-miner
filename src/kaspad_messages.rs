@@ -1,6 +1,6 @@
 use crate::proto::{
     kaspad_message::Payload, GetBlockTemplateRequestMessage, GetInfoRequestMessage, KaspadMessage,
-    NotifyBlockAddedRequestMessage, RpcBlock, SubmitBlockRequestMessage,
+    NotifyBlockAddedRequestMessage, RpcBlock, SubmitBlockRequestMessage, NotifyNewBlockTemplateRequestMessage
 };
 use crate::{
     pow::{self, HeaderHasher},
@@ -19,7 +19,7 @@ impl KaspadMessage {
 
     #[inline(always)]
     pub fn submit_block(block: RpcBlock) -> Self {
-        KaspadMessage { payload: Some(Payload::SubmitBlockRequest(SubmitBlockRequestMessage { block: Some(block) })) }
+        KaspadMessage { payload: Some(Payload::SubmitBlockRequest(SubmitBlockRequestMessage { block: Some(block), allow_non_daa_blocks: false })) }
     }
 }
 
@@ -37,6 +37,12 @@ impl From<NotifyBlockAddedRequestMessage> for KaspadMessage {
 impl From<GetBlockTemplateRequestMessage> for KaspadMessage {
     fn from(a: GetBlockTemplateRequestMessage) -> Self {
         KaspadMessage { payload: Some(Payload::GetBlockTemplateRequest(a)) }
+    }
+}
+
+impl From<NotifyNewBlockTemplateRequestMessage> for KaspadMessage {
+    fn from(a: NotifyNewBlockTemplateRequestMessage) -> Self {
+        KaspadMessage { payload: Some(Payload::NotifyNewBlockTemplateRequest(a)) }
     }
 }
 

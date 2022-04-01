@@ -17,7 +17,7 @@ pub struct Opt {
     #[clap(long = "devfund-percent", help = "The percentage of blocks to send to the devfund (minimum 2%)", default_value = "2", parse(try_from_str = parse_devfund_percent))]
     pub devfund_percent: u16,
 
-    #[clap(short, long, help = "Kaspad port [default: Mainnet = 16111, Testnet = 16211]")]
+    #[clap(short, long, help = "Kaspad port [default: Mainnet = 16110, Testnet = 16211]")]
     port: Option<u16>,
 
     #[clap(long, help = "Use testnet instead of mainnet [default: false]")]

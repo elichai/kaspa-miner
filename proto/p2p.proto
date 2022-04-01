@@ -78,7 +78,7 @@ message BlockHeader{
 }
 
 message BlockLevelParents {
-    repeated Hash parentHashes = 1;
+  repeated Hash parentHashes = 1;
 }
 
 message Hash{
@@ -190,6 +190,20 @@ message IbdBlockLocatorMessage {
   repeated Hash blockLocatorHashes = 2;
 }
 
+message RequestIBDChainBlockLocatorMessage{
+  Hash lowHash = 1;
+  Hash highHash = 2;
+}
+
+message IbdChainBlockLocatorMessage {
+  repeated Hash blockLocatorHashes = 1;
+}
+
+message RequestAnticoneMessage{
+  Hash blockHash = 1;
+  Hash contextHash = 2;
+}
+
 message IbdBlockLocatorHighestHashMessage {
   Hash highestHash = 1;
 }
@@ -204,6 +218,9 @@ message BlockHeadersMessage {
 message RequestPruningPointAndItsAnticoneMessage {
 }
 
+message RequestNextPruningPointAndItsAnticoneBlocksMessage{
+}
+
 message BlockWithTrustedDataMessage {
   BlockMessage block = 1;
   uint64 daaScore = 2;
@@ -213,6 +230,11 @@ message BlockWithTrustedDataMessage {
 
 message DaaBlock {
   BlockMessage block = 3;
+  GhostdagData ghostdagData = 2;
+}
+
+message DaaBlockV4 {
+  BlockHeader header = 1;
   GhostdagData ghostdagData = 2;
 }
 
@@ -251,4 +273,18 @@ message PruningPointProofMessage {
 
 message PruningPointProofHeaderArray {
   repeated BlockHeader headers = 1;
+}
+
+message ReadyMessage {
+}
+
+message BlockWithTrustedDataV4Message {
+  BlockMessage block = 1;
+  repeated uint64 daaWindowIndices = 2;
+  repeated uint64 ghostdagDataIndices = 3;
+}
+
+message TrustedDataMessage {
+  repeated DaaBlockV4 daaWindow = 1;
+  repeated BlockGhostdagDataHashPair ghostdagData = 2;
 }

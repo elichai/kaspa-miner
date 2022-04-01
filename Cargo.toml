@@ -23,7 +23,7 @@ include = [
 
 [dependencies]
 tonic = "0.6"
-tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.17", features = ["macros", "rt-multi-thread"] }
 prost = "0.9"
 futures-util = "0.3"
 tokio-stream = {version = "0.1", features = ["net"]}
@@ -48,6 +48,7 @@ async-trait = "0.1"
 num = "0.4"
 nix = "0.23"
 kernel32-sys = "0.2"
+semver = "1.0"
 
 [features]
 default = ["parking_lot"]
@@ -65,6 +66,7 @@ codegen-units = 1
 [build-dependencies]
 tonic-build = { version = "0.6", default-features = false, features = ["prost", "transport"] }
 cc = "1"
+time = { version = "0.3", features = ["formatting"] }
 
 [dev-dependencies]
 sha3 = { git = "https://github.com/elichai/hashes", branch = "cSHAKE" }

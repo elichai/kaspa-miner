@@ -1,6 +1,12 @@
 use std::env;
+use time::{format_description, OffsetDateTime};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let format = format_description::parse("[year][month][day][hour][minute][second]")?;
+    let dt = OffsetDateTime::now_utc().format(&format)?;
+    //env::set_var("PACKAGE_COMPILE_TIME", dt);
+    println!("cargo:rustc-env=PACKAGE_COMPILE_TIME={}", dt);
+
     println!("cargo:rerun-if-changed=proto");
     println!("cargo:rerun-if-changed=src/keccakf1600_x86-64.s");
     tonic_build::configure()

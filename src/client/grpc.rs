@@ -4,7 +4,7 @@ use crate::pow::BlockSeed::{FullBlock, PartialBlock};
 use crate::proto::kaspad_message::Payload;
 use crate::proto::rpc_client::RpcClient;
 use crate::proto::{
-    GetBlockTemplateRequestMessage, GetInfoRequestMessage, KaspadMessage, NotifyBlockAddedRequestMessage,
+    GetBlockTemplateRequestMessage, GetInfoRequestMessage, KaspadMessage, NotifyBlockAddedRequestMessage, NotifyNewBlockTemplateRequestMessage,
 };
 use crate::{miner::MinerManager, Error};
 use async_trait::async_trait;
@@ -18,7 +18,10 @@ use tokio::task::JoinHandle;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::{PollSendError, PollSender};
 use tonic::{transport::Channel as TonicChannel, Streaming};
+use semver::Version;
 
+static EXTRA_DATA: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"), "/", env!("PACKAGE_COMPILE_TIME"));
+static VERSION_UPDATE: &str = "0.11.15";
 type BlockHandle = JoinHandle<Result<(), PollSendError<KaspadMessage>>>;
 
 #[allow(dead_code)]
@@ -44,8 +47,7 @@ impl Client for KaspadHandler {
     }
 
     async fn register(&mut self) -> Result<(), Error> {
-        self.client_send(NotifyBlockAddedRequestMessage {}).await?;
-        self.client_get_block_template().await?;
+        // We actually register in connect
         Ok(())
     }
 
@@ -76,9 +78,8 @@ impl KaspadHandler {
         D::Error: Into<Error>,
     {
         let mut client = RpcClient::connect(address).await?;
-        let (send_channel, recv) = mpsc::channel(3);
+        let (send_channel, recv) = mpsc::channel(2);
         send_channel.send(GetInfoRequestMessage {}.into()).await?;
-        send_channel.send(GetBlockTemplateRequestMessage { pay_address: miner_address.clone() }.into()).await?;
         let stream = client.message_stream(ReceiverStream::new(recv)).await?.into_inner();
         let (block_channel, block_handle) = Self::create_block_channel(send_channel.clone());
         Ok(Box::new(Self {
@@ -126,12 +127,13 @@ impl KaspadHandler {
             _ => self.miner_address.clone(),
         };
         self.block_template_ctr.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |v| Some((v + 1) % 10_000)).unwrap();
-        self.client_send(GetBlockTemplateRequestMessage { pay_address }).await
+        self.client_send(GetBlockTemplateRequestMessage { pay_address, extra_data: EXTRA_DATA.into() }).await
     }
 
     async fn handle_message(&mut self, msg: Payload, miner: &mut MinerManager) -> Result<(), Error> {
         match msg {
             Payload::BlockAddedNotification(_) => self.client_get_block_template().await?,
+            Payload::NewBlockTemplateNotification(_) => self.client_get_block_template().await?,
             Payload::GetBlockTemplateResponse(template) => match (template.block, template.is_synced, template.error) {
                 (Some(b), true, None) => miner.process_block(Some(FullBlock(b))).await?,
                 (Some(b), false, None) if self.mine_when_not_synced => miner.process_block(Some(FullBlock(b))).await?,
@@ -150,9 +152,23 @@ impl KaspadHandler {
                     info!("Get block response: {:?}", msg);
                 }
             }
-            Payload::GetInfoResponse(info) => info!("Kaspad version: {}", info.server_version),
+            Payload::GetInfoResponse(info) => {
+                info!("Kaspad version: {}", info.server_version);
+                let kaspad_version = Version::parse(&info.server_version)?;
+                let update_version = Version::parse(VERSION_UPDATE)?;
+                match kaspad_version >= update_version {
+                    true => self.client_send(NotifyNewBlockTemplateRequestMessage {}).await?,
+                    false => self.client_send( NotifyBlockAddedRequestMessage{}).await?,
+                };
+
+                self.client_get_block_template().await?;
+            },
+            Payload::NotifyNewBlockTemplateResponse(res) => match res.error {
+                None => info!("Registered for new template notifications"),
+                Some(e) => error!("Failed registering for new template notifications: {:?}", e),
+            },
             Payload::NotifyBlockAddedResponse(res) => match res.error {
-                None => info!("Registered for block notifications"),
+                None => info!("Registered for block notifications (upgrade your Kaspad for better experience)"),
                 Some(e) => error!("Failed registering for block notifications: {:?}", e),
             },
             msg => info!("got unknown msg: {:?}", msg),

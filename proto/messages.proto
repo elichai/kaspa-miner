@@ -44,6 +44,13 @@ message KaspadMessage {
     PruningPointsMessage pruningPoints = 47;
     RequestPruningPointProofMessage requestPruningPointProof = 48;
     PruningPointProofMessage pruningPointProof = 49;
+    ReadyMessage ready = 50;
+    BlockWithTrustedDataV4Message blockWithTrustedDataV4 = 51;
+    TrustedDataMessage trustedData = 52;
+    RequestIBDChainBlockLocatorMessage requestIBDChainBlockLocator = 53;
+    IbdChainBlockLocatorMessage ibdChainBlockLocator = 54;
+    RequestAnticoneMessage requestAnticone = 55;
+    RequestNextPruningPointAndItsAnticoneBlocksMessage requestNextPruningPointAndItsAnticoneBlocks = 56;
 
     GetCurrentNetworkRequestMessage getCurrentNetworkRequest = 1001;
     GetCurrentNetworkResponseMessage getCurrentNetworkResponse = 1002;
@@ -121,6 +128,13 @@ message KaspadMessage {
     NotifyVirtualDaaScoreChangedRequestMessage notifyVirtualDaaScoreChangedRequest = 1074;
     NotifyVirtualDaaScoreChangedResponseMessage notifyVirtualDaaScoreChangedResponse = 1075;
     VirtualDaaScoreChangedNotificationMessage virtualDaaScoreChangedNotification = 1076;
+    GetBalanceByAddressRequestMessage getBalanceByAddressRequest = 1077;
+    GetBalanceByAddressResponseMessage getBalanceByAddressResponse = 1078;
+    GetBalancesByAddressesRequestMessage getBalancesByAddressesRequest = 1079;
+    GetBalancesByAddressesResponseMessage getBalancesByAddressesResponse = 1080;
+    NotifyNewBlockTemplateRequestMessage notifyNewBlockTemplateRequest = 1081;
+    NotifyNewBlockTemplateResponseMessage notifyNewBlockTemplateResponse = 1082;
+    NewBlockTemplateNotificationMessage newBlockTemplateNotification = 1083;
   }
 }
 
