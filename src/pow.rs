@@ -20,7 +20,7 @@ mod xoshiro;
 
 #[derive(Clone, Debug)]
 pub enum BlockSeed {
-    FullBlock(RpcBlock),
+    FullBlock(Box<RpcBlock>),
     PartialBlock {
         id: String,
         header_hash: [u64; 4],

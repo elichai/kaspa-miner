@@ -4,13 +4,15 @@ use crate::pow::BlockSeed::{FullBlock, PartialBlock};
 use crate::proto::kaspad_message::Payload;
 use crate::proto::rpc_client::RpcClient;
 use crate::proto::{
-    GetBlockTemplateRequestMessage, GetInfoRequestMessage, KaspadMessage, NotifyBlockAddedRequestMessage, NotifyNewBlockTemplateRequestMessage,
+    GetBlockTemplateRequestMessage, GetInfoRequestMessage, KaspadMessage, NotifyBlockAddedRequestMessage,
+    NotifyNewBlockTemplateRequestMessage,
 };
 use crate::{miner::MinerManager, Error};
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use log::{error, info, warn};
 use rand::{thread_rng, RngCore};
+use semver::Version;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc::{self, error::SendError, Sender};
@@ -18,9 +20,9 @@ use tokio::task::JoinHandle;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::{PollSendError, PollSender};
 use tonic::{transport::Channel as TonicChannel, Streaming};
-use semver::Version;
 
-static EXTRA_DATA: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"), "/", env!("PACKAGE_COMPILE_TIME"));
+static EXTRA_DATA: &str =
+    concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"), "/", env!("PACKAGE_COMPILE_TIME"));
 static VERSION_UPDATE: &str = "0.11.15";
 type BlockHandle = JoinHandle<Result<(), PollSendError<KaspadMessage>>>;
 
@@ -105,7 +107,7 @@ impl KaspadHandler {
             tokio::spawn(async move {
                 ReceiverStream::new(recv)
                     .map(|block_seed| match block_seed {
-                        FullBlock(block) => KaspadMessage::submit_block(block),
+                        FullBlock(block) => KaspadMessage::submit_block(*block),
                         PartialBlock { .. } => unreachable!("All blocks sent here should have arrived from here"),
                     })
                     .map(Ok)
@@ -135,8 +137,10 @@ impl KaspadHandler {
             Payload::BlockAddedNotification(_) => self.client_get_block_template().await?,
             Payload::NewBlockTemplateNotification(_) => self.client_get_block_template().await?,
             Payload::GetBlockTemplateResponse(template) => match (template.block, template.is_synced, template.error) {
-                (Some(b), true, None) => miner.process_block(Some(FullBlock(b))).await?,
-                (Some(b), false, None) if self.mine_when_not_synced => miner.process_block(Some(FullBlock(b))).await?,
+                (Some(b), true, None) => miner.process_block(Some(FullBlock(Box::new(b)))).await?,
+                (Some(b), false, None) if self.mine_when_not_synced => {
+                    miner.process_block(Some(FullBlock(Box::new(b)))).await?
+                }
                 (_, false, None) => miner.process_block(None).await?,
                 (_, _, Some(e)) => warn!("GetTemplate returned with an error: {:?}", e),
                 (None, true, None) => error!("No block and No Error!"),
@@ -158,11 +162,11 @@ impl KaspadHandler {
                 let update_version = Version::parse(VERSION_UPDATE)?;
                 match kaspad_version >= update_version {
                     true => self.client_send(NotifyNewBlockTemplateRequestMessage {}).await?,
-                    false => self.client_send( NotifyBlockAddedRequestMessage{}).await?,
+                    false => self.client_send(NotifyBlockAddedRequestMessage {}).await?,
                 };
 
                 self.client_get_block_template().await?;
-            },
+            }
             Payload::NotifyNewBlockTemplateResponse(res) => match res.error {
                 None => info!("Registered for new template notifications"),
                 Some(e) => error!("Failed registering for new template notifications: {:?}", e),
