@@ -62,7 +62,7 @@ impl State {
     pub fn generate_block_if_pow(&self) -> Option<RpcBlock> {
         self.check_pow().then(|| {
             let mut block = (*self.block).clone();
-            let header = &mut block.header.as_mut().expect("We checked that a header exists on creation");
+            let header = block.header.as_mut().expect("We checked that a header exists on creation");
             header.nonce = self.nonce;
             block
         })

@@ -21,7 +21,7 @@ pub struct Opt {
     /// Mine a percentage of the blocks to the Kaspa devfund [default: Off]
     pub devfund_address: Option<String>,
 
-    #[clap(long = "devfund-percent", default_value = "1", display_order = 7, parse(try_from_str = parse_devfund_percent))]
+    #[clap(long = "devfund-percent", default_value = "1", display_order = 7, value_parser = parse_devfund_percent)]
     /// The percentage of blocks to send to the devfund
     pub devfund_percent: u16,
 
@@ -80,7 +80,7 @@ impl Opt {
     }
 
     fn port(&mut self) -> u16 {
-        *self.port.get_or_insert_with(|| if self.testnet { 16211 } else { 16110 })
+        *self.port.get_or_insert(if self.testnet { 16211 } else { 16110 })
     }
 
     pub fn log_level(&self) -> LevelFilter {

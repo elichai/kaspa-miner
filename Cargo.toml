@@ -22,19 +22,19 @@ include = [
 ]
 
 [dependencies]
-tonic = "0.6"
-tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
-prost = "0.9"
+tonic = "0.8"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+prost = "0.11"
 tokio-stream = "0.1"
 num_cpus = "1"
 rand = "0.8"
 blake2b_simd = "1.0.0"
-clap = { version = "3", features = ["derive", "color"] }
+clap = { version = "4", features = ["derive", "color"] }
 log = "0.4"
 env_logger = "0.9"
 keccak = { version = "0.1", optional = true }
-parking = { package = "parking_lot", version = "0.11", optional = true }
-shuttle = { version = "0.0.7", optional = true }
+parking = { package = "parking_lot", version = "0.12", optional = true }
+shuttle = { version = "0.3", optional = true }
 
 [features]
 default = ["parking_lot"]
@@ -50,7 +50,7 @@ lto = true
 codegen-units = 1
 
 [build-dependencies]
-tonic-build = { version = "0.6", default-features = false, features = ["prost", "transport"] }
+tonic-build = { version = "0.8", default-features = false, features = ["prost", "transport"] }
 cc = "1"
 
 [dev-dependencies]

@@ -76,9 +76,9 @@ impl KaspadHandler {
         match msg {
             Payload::BlockAddedNotification(_) => self.client_get_block_template().await?,
             Payload::GetBlockTemplateResponse(template) => match (template.block, template.is_synced, template.error) {
-                (Some(b), true, None) => miner.process_block(Some(b)).await?,
-                (Some(b), false, None) if self.mine_when_not_synced => miner.process_block(Some(b)).await?,
-                (_, false, None) => miner.process_block(None).await?,
+                (Some(b), true, None) => miner.process_block(Some(b))?,
+                (Some(b), false, None) if self.mine_when_not_synced => miner.process_block(Some(b))?,
+                (_, false, None) => miner.process_block(None)?,
                 (_, _, Some(e)) => warn!("GetTemplate returned with an error: {:?}", e),
                 (None, true, None) => error!("No block and No Error!"),
             },
@@ -89,9 +89,8 @@ impl KaspadHandler {
             Payload::GetBlockResponse(msg) => {
                 if let Some(e) = msg.error {
                     return Err(e.message.into());
-                } else {
-                    info!("Get block response: {:?}", msg);
                 }
+                info!("Get block response: {:?}", msg);
             }
             Payload::GetInfoResponse(info) => info!("Kaspad version: {}", info.server_version),
             Payload::NotifyBlockAddedResponse(res) => match res.error {

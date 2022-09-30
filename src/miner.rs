@@ -66,21 +66,18 @@ impl MinerManager {
             .map(move |_| Self::launch_cpu_miner(send_channel.clone(), work_channel.clone(), Arc::clone(&hashes_tried)))
     }
 
-    pub async fn process_block(&mut self, block: Option<RpcBlock>) -> Result<(), Error> {
-        let state = match block {
-            Some(b) => {
-                self.is_synced = true;
-                let id = self.current_state_id.fetch_add(1, Ordering::SeqCst);
-                Some(pow::State::new(id, b)?)
+    pub fn process_block(&mut self, block: Option<RpcBlock>) -> Result<(), Error> {
+        let state = if let Some(b) = block {
+            self.is_synced = true;
+            let id = self.current_state_id.fetch_add(1, Ordering::SeqCst);
+            Some(pow::State::new(id, b)?)
+        } else {
+            if !self.is_synced {
+                return Ok(());
             }
-            None => {
-                if !self.is_synced {
-                    return Ok(());
-                }
-                self.is_synced = false;
-                warn!("Kaspad is not synced, skipping current template");
-                None
-            }
+            self.is_synced = false;
+            warn!("Kaspad is not synced, skipping current template");
+            None
         };
 
         self.block_channel.send(state).map_err(|_e| "Failed sending block to threads")?;
@@ -132,7 +129,7 @@ impl MinerManager {
             let hashes = hashes_tried.swap(0, Ordering::AcqRel);
             let rate = (hashes as f64) / (now - last_instant).as_secs_f64();
             if hashes == 0 && i % 2 == 0 {
-                warn!("Kaspad is still not synced")
+                warn!("Kaspad is still not synced");
             } else if hashes != 0 {
                 let (rate, suffix) = Self::hash_suffix(rate);
                 info!("Current hashrate is: {:.2} {}", rate, suffix);

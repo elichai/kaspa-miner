@@ -1,3 +1,4 @@
+#![allow(clippy::unreadable_literal)]
 use crate::Hash;
 use blake2b_simd::State as Blake2bState;
 
@@ -43,7 +44,7 @@ impl PowHasher {
 }
 
 impl HeavyHasher {
-    // The initial state of `cSHAKE256("ProofOfWorkHash")`
+    // The initial state of `cSHAKE256("HeavyHash")`
     // [4] -> 16654558671554924254 ^ 0x04(padding byte) = 16654558671554924250
     // [16] -> 9793466274154320918 ^ 0x8000000000000000(final padding) = 570094237299545110
     #[rustfmt::skip]
