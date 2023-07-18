@@ -1,9 +1,9 @@
 #![cfg_attr(all(test, feature = "bench"), feature(test))]
 
-use std::error::Error as StdError;
-
 use clap::Parser;
 use log::{info, warn};
+use std::error::Error as StdError;
+use std::time::Duration;
 
 use crate::cli::Opt;
 use crate::client::KaspadHandler;
@@ -33,7 +33,7 @@ async fn main() -> Result<(), Error> {
     let mut opt: Opt = Opt::parse();
     opt.process()?;
     env_logger::builder().filter_level(opt.log_level()).parse_default_env().init();
-
+    let throttle = opt.throttle.map(Duration::from_millis);
     loop {
         let mut client =
             KaspadHandler::connect(opt.kaspad_address.clone(), opt.mining_address.clone(), opt.mine_when_not_synced)
@@ -49,7 +49,7 @@ async fn main() -> Result<(), Error> {
         }
         client.client_send(NotifyBlockAddedRequestMessage {}).await?;
         client.client_get_block_template().await?;
-        let mut miner_manager = MinerManager::new(client.send_channel.clone(), opt.num_threads);
+        let mut miner_manager = MinerManager::new(client.send_channel.clone(), opt.num_threads, throttle);
         client.listen(&mut miner_manager).await?;
         warn!("Disconnected from kaspad, retrying");
     }

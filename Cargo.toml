@@ -32,7 +32,8 @@ blake2b_simd = "1.0.0"
 clap = { version = "4", features = ["derive", "color"] }
 log = "0.4"
 env_logger = "0.9"
-keccak = { version = "0.1", optional = true }
+# keccak = { version = "0.1", optional = true }
+keccak = { version = "0.1" }
 parking = { package = "parking_lot", version = "0.12", optional = true }
 shuttle = { version = "0.3", optional = true }
 
@@ -40,10 +41,11 @@ shuttle = { version = "0.3", optional = true }
 default = ["parking_lot"]
 parking_lot = ["parking", "tokio/parking_lot"]
 bench = []
-no-asm = ["keccak"]
+no-asm = []
+# no-asm = ["keccak"]
 
-[target.'cfg(target_os = "windows")'.dependencies]
-keccak = "0.1"
+# [target.'cfg(target_os = "windows")'.dependencies]
+# keccak = "0.1"
 
 [profile.release]
 lto = true

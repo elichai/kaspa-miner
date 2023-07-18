@@ -39,10 +39,11 @@ pub fn get_num_cpus(n_cpus: Option<u16>) -> u16 {
 const LOG_RATE: Duration = Duration::from_secs(10);
 
 impl MinerManager {
-    pub fn new(send_channel: Sender<KaspadMessage>, n_cpus: Option<u16>) -> Self {
+    pub fn new(send_channel: Sender<KaspadMessage>, n_cpus: Option<u16>, throttle: Option<Duration>) -> Self {
         let hashes_tried = Arc::new(AtomicU64::new(0));
         let (send, recv) = watch::channel(None);
-        let handles = Self::launch_cpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv, n_cpus).collect();
+        let handles =
+            Self::launch_cpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv, n_cpus, throttle).collect();
         Self {
             handles,
             block_channel: send,
@@ -59,11 +60,18 @@ impl MinerManager {
         hashes_tried: Arc<AtomicU64>,
         work_channel: watch::Receiver<Option<pow::State>>,
         n_cpus: Option<u16>,
+        throttle: Option<Duration>,
     ) -> impl Iterator<Item = MinerHandler> {
         let n_cpus = get_num_cpus(n_cpus);
         info!("launching: {} cpu miners", n_cpus);
-        (0..n_cpus)
-            .map(move |_| Self::launch_cpu_miner(send_channel.clone(), work_channel.clone(), Arc::clone(&hashes_tried)))
+        (0..n_cpus).map(move |_| {
+            Self::launch_cpu_miner(
+                send_channel.clone(),
+                work_channel.clone(),
+                Arc::clone(&hashes_tried),
+                throttle,
+            )
+        })
     }
 
     pub fn process_block(&mut self, block: Option<RpcBlock>) -> Result<(), Error> {
@@ -88,6 +96,7 @@ impl MinerManager {
         send_channel: Sender<KaspadMessage>,
         mut block_channel: watch::Receiver<Option<pow::State>>,
         hashes_tried: Arc<AtomicU64>,
+        throttle: Option<Duration>,
     ) -> MinerHandler {
         let mut nonce = Wrapping(thread_rng().next_u64());
         std::thread::spawn(move || {
@@ -101,7 +110,7 @@ impl MinerManager {
                     None => continue,
                 };
                 state_ref.nonce = nonce.0;
-                if let Some(block) = state_ref.generate_block_if_pow() {
+                if let Some(block) = state_ref.generate_block_if_pow(throttle) {
                     let block_hash =
                         block.block_hash().expect("We just got it from the state, we should be able to hash it");
                     send_channel.blocking_send(KaspadMessage::submit_block(block))?;

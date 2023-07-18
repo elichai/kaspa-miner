@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, thread::sleep, time::Duration};
 
 pub use crate::pow::hasher::HeaderHasher;
 use crate::{
@@ -45,22 +45,25 @@ impl State {
 
     #[inline(always)]
     // PRE_POW_HASH || TIME || 32 zero byte padding || NONCE
-    pub fn calculate_pow(&self) -> Uint256 {
+    pub fn calculate_pow(&self, throttle: Option<Duration>) -> Uint256 {
+        if let Some(sleep_duration) = throttle {
+            sleep(sleep_duration)
+        }
         // Hasher already contains PRE_POW_HASH || TIME || 32 zero byte padding; so only the NONCE is missing
         let hash = self.hasher.finalize_with_nonce(self.nonce);
         self.matrix.heavy_hash(hash)
     }
 
     #[inline(always)]
-    pub fn check_pow(&self) -> bool {
-        let pow = self.calculate_pow();
+    pub fn check_pow(&self, throttle: Option<Duration>) -> bool {
+        let pow = self.calculate_pow(throttle);
         // The pow hash must be less or equal than the claimed target.
         pow <= self.target
     }
 
     #[inline(always)]
-    pub fn generate_block_if_pow(&self) -> Option<RpcBlock> {
-        self.check_pow().then(|| {
+    pub fn generate_block_if_pow(&self, throttle: Option<Duration>) -> Option<RpcBlock> {
+        self.check_pow(throttle).then(|| {
             let mut block = (*self.block).clone();
             let header = block.header.as_mut().expect("We checked that a header exists on creation");
             header.nonce = self.nonce;
