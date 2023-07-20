@@ -4,6 +4,8 @@ use clap::Parser;
 use log::{info, warn};
 use std::error::Error as StdError;
 use std::time::Duration;
+use chrono::Local;
+use std::io::Write;
 
 use crate::cli::Opt;
 use crate::client::KaspadHandler;
@@ -32,8 +34,18 @@ type Hash = Uint256;
 async fn main() -> Result<(), Error> {
     let mut opt: Opt = Opt::parse();
     opt.process()?;
-    env_logger::builder().filter_level(opt.log_level()).parse_default_env().init();
+
+    // env_logger::builder().filter_level(opt.log_level()).parse_default_env().init();
+    let mut builder = env_logger::builder();
+    builder.filter_level(opt.log_level());
+    builder.format(|buf, record| {
+        let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S%.3f%:z");
+        writeln!(buf, "{} [{:>5}] {}", timestamp, record.level(), record.args())
+    });
+    builder.init();
+
     let throttle = opt.throttle.map(Duration::from_millis);
+
     loop {
         let mut client =
             KaspadHandler::connect(opt.kaspad_address.clone(), opt.mining_address.clone(), opt.mine_when_not_synced)

@@ -38,6 +38,7 @@ pub struct Opt {
     #[clap(long = "mine-when-not-synced", display_order = 8)]
     /// Mine even when kaspad says it is not synced, only useful when passing `--allow-submit-block-when-not-synced` to kaspad  [default: false]
     pub mine_when_not_synced: bool,
+    #[clap(long = "throttle")]
     /// Throttle (milliseconds) between each pow hash generation (used for development testing)
     pub throttle: Option<u64>,
 }

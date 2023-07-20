@@ -36,6 +36,7 @@ env_logger = "0.9"
 keccak = { version = "0.1" }
 parking = { package = "parking_lot", version = "0.12", optional = true }
 shuttle = { version = "0.3", optional = true }
+chrono = "0.4.26"
 
 [features]
 default = ["parking_lot"]

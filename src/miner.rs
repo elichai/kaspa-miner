@@ -1,6 +1,7 @@
 use std::num::Wrapping;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::thread::sleep;
 use std::time::Duration;
 
 use crate::proto::{KaspadMessage, RpcBlock};
@@ -110,11 +111,16 @@ impl MinerManager {
                     None => continue,
                 };
                 state_ref.nonce = nonce.0;
-                if let Some(block) = state_ref.generate_block_if_pow(throttle) {
+                if let Some(block) = state_ref.generate_block_if_pow() {
                     let block_hash =
                         block.block_hash().expect("We just got it from the state, we should be able to hash it");
                     send_channel.blocking_send(KaspadMessage::submit_block(block))?;
                     info!("Found a block: {:x}", block_hash);
+
+                    if let Some(sleep_duration) = throttle {
+                        sleep(sleep_duration)
+                    }
+            
                 }
                 nonce += Wrapping(1);
                 // TODO: Is this really necessary? can we just use Relaxed?
