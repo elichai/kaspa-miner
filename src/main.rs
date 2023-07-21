@@ -35,13 +35,14 @@ async fn main() -> Result<(), Error> {
     let mut opt: Opt = Opt::parse();
     opt.process()?;
 
-    // env_logger::builder().filter_level(opt.log_level()).parse_default_env().init();
     let mut builder = env_logger::builder();
-    builder.filter_level(opt.log_level());
-    builder.format(|buf, record| {
-        let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S%.3f%:z");
-        writeln!(buf, "{} [{:>5}] {}", timestamp, record.level(), record.args())
-    });
+    builder.filter_level(opt.log_level()).parse_default_env();
+    if opt.altlogs {
+        builder.format(|buf, record| {
+            let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S%.3f%:z");
+            writeln!(buf, "{} [{:>5}] {}", timestamp, record.level(), record.args())
+        });
+    }
     builder.init();
 
     let throttle = opt.throttle.map(Duration::from_millis);
