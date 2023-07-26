@@ -83,7 +83,7 @@ impl KaspadHandler {
                 (None, true, None) => error!("No block and No Error!"),
             },
             Payload::SubmitBlockResponse(res) => match res.error {
-                None => info!("block submitted successfully!"),
+                None => info!("Block submitted successfully!"),
                 Some(e) => warn!("Failed submitting block: {:?}", e),
             },
             Payload::GetBlockResponse(msg) => {
@@ -97,7 +97,7 @@ impl KaspadHandler {
                 None => info!("Registered for block notifications"),
                 Some(e) => error!("Failed registering for block notifications: {:?}", e),
             },
-            msg => info!("got unknown msg: {:?}", msg),
+            msg => info!("Got unknown msg: {:?}", msg),
         }
         Ok(())
     }

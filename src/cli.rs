@@ -80,7 +80,7 @@ impl Opt {
             let port = self.port();
             self.kaspad_address = format!("grpc://{}:{}", self.kaspad_address, port);
         }
-        log::info!("kaspad address: {}", self.kaspad_address);
+        log::info!("Kaspad address: {}", self.kaspad_address);
 
         Ok(())
     }

@@ -64,7 +64,7 @@ impl MinerManager {
         throttle: Option<Duration>,
     ) -> impl Iterator<Item = MinerHandler> {
         let n_cpus = get_num_cpus(n_cpus);
-        info!("launching: {} cpu miners", n_cpus);
+        info!("Launching: {} cpu miners", n_cpus);
         (0..n_cpus).map(move |_| {
             Self::launch_cpu_miner(
                 send_channel.clone(),
