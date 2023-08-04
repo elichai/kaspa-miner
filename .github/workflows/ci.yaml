@@ -70,17 +70,17 @@ jobs:
           command: test
           args: --features=no-asm
 
-      - name: Run cargo test no parking_lot
+      - name: Run cargo test with parking_lot
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --no-default-features
+          args: --features parking_lot
 
       - name: Run cargo test shuttle
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --no-default-features --features=shuttle
+          args: --features=shuttle
 
 
 
@@ -121,11 +121,11 @@ jobs:
           command: test
           args: --features=no-asm --release
 
-      - name: Run cargo test release no parking_lot
+      - name: Run cargo test release with parking_lot
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --no-default-features --release
+          args: --features=parking_lot --release
 
       - name: Run cargo test release shuttle
         uses: actions-rs/cargo@v1
