@@ -4,7 +4,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::proto::{KaspadMessage, RpcBlock};
-use crate::{pow, watch, Error};
+use crate::swap_rust::WatchSwap;
+use crate::{pow, Error, ShutdownHandler};
 use log::{info, warn};
 use rand::{thread_rng, RngCore};
 use tokio::sync::mpsc::Sender;
@@ -16,7 +17,7 @@ type MinerHandler = std::thread::JoinHandle<Result<(), Error>>;
 #[allow(dead_code)]
 pub struct MinerManager {
     handles: Vec<MinerHandler>,
-    block_channel: watch::Sender<Option<pow::State>>,
+    block_channel: WatchSwap<pow::State>,
     send_channel: Sender<KaspadMessage>,
     logger_handle: JoinHandle<()>,
     is_synced: bool,
@@ -39,13 +40,15 @@ pub fn get_num_cpus(n_cpus: Option<u16>) -> u16 {
 const LOG_RATE: Duration = Duration::from_secs(10);
 
 impl MinerManager {
-    pub fn new(send_channel: Sender<KaspadMessage>, n_cpus: Option<u16>) -> Self {
+    pub fn new(send_channel: Sender<KaspadMessage>, n_cpus: Option<u16>, shutdown: ShutdownHandler) -> Self {
         let hashes_tried = Arc::new(AtomicU64::new(0));
-        let (send, recv) = watch::channel(None);
-        let handles = Self::launch_cpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), recv, n_cpus).collect();
+        let watch = WatchSwap::empty();
+        let handles =
+            Self::launch_cpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), watch.clone(), shutdown, n_cpus)
+                .collect();
         Self {
             handles,
-            block_channel: send,
+            block_channel: watch,
             send_channel,
             logger_handle: task::spawn(Self::log_hashrate(Arc::clone(&hashes_tried))),
             is_synced: true,
@@ -57,19 +60,22 @@ impl MinerManager {
     fn launch_cpu_threads(
         send_channel: Sender<KaspadMessage>,
         hashes_tried: Arc<AtomicU64>,
-        work_channel: watch::Receiver<Option<pow::State>>,
+        work_channel: WatchSwap<pow::State>,
+        shutdown: ShutdownHandler,
         n_cpus: Option<u16>,
     ) -> impl Iterator<Item = MinerHandler> {
         let n_cpus = get_num_cpus(n_cpus);
         info!("launching: {} cpu miners", n_cpus);
-        (0..n_cpus)
-            .map(move |_| Self::launch_cpu_miner(send_channel.clone(), work_channel.clone(), Arc::clone(&hashes_tried)))
+        (0..n_cpus).map(move |_| {
+            Self::launch_cpu_miner(send_channel.clone(), work_channel.clone(), hashes_tried.clone(), shutdown.clone())
+        })
     }
 
     pub fn process_block(&mut self, block: Option<RpcBlock>) -> Result<(), Error> {
         let state = if let Some(b) = block {
             self.is_synced = true;
-            let id = self.current_state_id.fetch_add(1, Ordering::SeqCst);
+            // Relaxed ordering here means there's no promise that the counter will always go up, but the id will always be unique
+            let id = self.current_state_id.fetch_add(1, Ordering::Relaxed);
             Some(pow::State::new(id, b)?)
         } else {
             if !self.is_synced {
@@ -80,40 +86,47 @@ impl MinerManager {
             None
         };
 
-        self.block_channel.send(state).map_err(|_e| "Failed sending block to threads")?;
+        self.block_channel.swap(state);
         Ok(())
     }
 
     pub fn launch_cpu_miner(
         send_channel: Sender<KaspadMessage>,
-        mut block_channel: watch::Receiver<Option<pow::State>>,
+        mut block_channel: WatchSwap<pow::State>,
         hashes_tried: Arc<AtomicU64>,
+        shutdown: ShutdownHandler,
     ) -> MinerHandler {
+        // We mark it cold as the function is not called often, and it's not in the hot path
+        #[cold]
+        fn found_block(send_channel: &Sender<KaspadMessage>, block: RpcBlock) -> Result<(), Error> {
+            let block_hash = block.block_hash().expect("We just got it from the state, we should be able to hash it");
+            send_channel.blocking_send(KaspadMessage::submit_block(block))?;
+            info!("Found a block: {:x}", block_hash);
+            Ok(())
+        }
+
         let mut nonce = Wrapping(thread_rng().next_u64());
         std::thread::spawn(move || {
             let mut state = None;
             loop {
                 if state.is_none() {
-                    state = block_channel.wait_for_change()?;
+                    state = block_channel.wait_for_change().as_deref().cloned();
                 }
-                let state_ref = match state.as_mut() {
-                    Some(s) => s,
-                    None => continue,
-                };
+                let Some(state_ref) = state.as_mut() else {continue;};
                 state_ref.nonce = nonce.0;
+
                 if let Some(block) = state_ref.generate_block_if_pow() {
-                    let block_hash =
-                        block.block_hash().expect("We just got it from the state, we should be able to hash it");
-                    send_channel.blocking_send(KaspadMessage::submit_block(block))?;
-                    info!("Found a block: {:x}", block_hash);
+                    found_block(&send_channel, block)?;
                 }
                 nonce += Wrapping(1);
-                // TODO: Is this really necessary? can we just use Relaxed?
-                hashes_tried.fetch_add(1, Ordering::AcqRel);
 
                 if nonce.0 % 128 == 0 {
-                    if let Some(new_state) = block_channel.get_changed()? {
-                        state = new_state;
+                    hashes_tried.fetch_add(128, Ordering::Relaxed);
+                    if shutdown.is_shutdown() {
+                        return Ok(());
+                    }
+                    if let Some(new_state) = block_channel.get_changed() {
+                        state = new_state.as_deref().cloned();
                     }
                 }
             }
@@ -126,7 +139,7 @@ impl MinerManager {
         let mut last_instant = ticker.tick().await;
         for i in 0u64.. {
             let now = ticker.tick().await;
-            let hashes = hashes_tried.swap(0, Ordering::AcqRel);
+            let hashes = hashes_tried.swap(0, Ordering::Relaxed);
             let rate = (hashes as f64) / (now - last_instant).as_secs_f64();
             if hashes == 0 && i % 2 == 0 {
                 warn!("Kaspad is still not synced");

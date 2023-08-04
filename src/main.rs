@@ -1,6 +1,10 @@
 #![cfg_attr(all(test, feature = "bench"), feature(test))]
 
 use std::error::Error as StdError;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 
 use clap::Parser;
 use log::{info, warn};
@@ -16,8 +20,8 @@ mod client;
 mod kaspad_messages;
 mod miner;
 mod pow;
+mod swap_rust;
 mod target;
-mod watch;
 
 pub mod proto {
     #![allow(clippy::derive_partial_eq_without_eq)]
@@ -28,13 +32,38 @@ pub type Error = Box<dyn StdError + Send + Sync + 'static>;
 
 type Hash = Uint256;
 
+#[derive(Debug, Clone)]
+pub struct ShutdownHandler(Arc<AtomicBool>);
+
+pub struct ShutdownOnDrop(ShutdownHandler);
+
+impl ShutdownHandler {
+    #[inline(always)]
+    pub fn is_shutdown(&self) -> bool {
+        self.0.load(Ordering::Acquire)
+    }
+
+    #[inline(always)]
+    pub fn arm(&self) -> ShutdownOnDrop {
+        ShutdownOnDrop(self.clone())
+    }
+}
+
+impl Drop for ShutdownOnDrop {
+    fn drop(&mut self) {
+        self.0 .0.store(true, Ordering::Release);
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let mut opt: Opt = Opt::parse();
     opt.process()?;
     env_logger::builder().filter_level(opt.log_level()).parse_default_env().init();
+    let shutdown = ShutdownHandler(Arc::new(AtomicBool::new(false)));
+    let _shutdown_when_dropped = shutdown.arm();
 
-    loop {
+    while !shutdown.is_shutdown() {
         let mut client =
             KaspadHandler::connect(opt.kaspad_address.clone(), opt.mining_address.clone(), opt.mine_when_not_synced)
                 .await?;
@@ -49,8 +78,9 @@ async fn main() -> Result<(), Error> {
         }
         client.client_send(NotifyBlockAddedRequestMessage {}).await?;
         client.client_get_block_template().await?;
-        let mut miner_manager = MinerManager::new(client.send_channel.clone(), opt.num_threads);
-        client.listen(&mut miner_manager).await?;
+        let mut miner_manager = MinerManager::new(client.send_channel.clone(), opt.num_threads, shutdown.clone());
+        client.listen(&mut miner_manager, shutdown.clone()).await?;
         warn!("Disconnected from kaspad, retrying");
     }
+    Ok(())
 }

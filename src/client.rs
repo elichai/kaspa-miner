@@ -1,7 +1,7 @@
 use crate::proto::kaspad_message::Payload;
 use crate::proto::rpc_client::RpcClient;
 use crate::proto::{GetBlockTemplateRequestMessage, GetInfoRequestMessage, KaspadMessage};
-use crate::{miner::MinerManager, Error};
+use crate::{miner::MinerManager, Error, ShutdownHandler};
 use log::{error, info, warn};
 use tokio::sync::mpsc::{self, error::SendError, Sender};
 use tokio_stream::wrappers::ReceiverStream;
@@ -22,7 +22,7 @@ pub struct KaspadHandler {
 impl KaspadHandler {
     pub async fn connect<D>(address: D, miner_address: String, mine_when_not_synced: bool) -> Result<Self, Error>
     where
-        D: std::convert::TryInto<tonic::transport::Endpoint>,
+        D: TryInto<tonic::transport::Endpoint>,
         D::Error: Into<Error>,
     {
         let mut client = RpcClient::connect(address).await?;
@@ -62,8 +62,11 @@ impl KaspadHandler {
         self.client_send(GetBlockTemplateRequestMessage { pay_address }).await
     }
 
-    pub async fn listen(&mut self, miner: &mut MinerManager) -> Result<(), Error> {
+    pub async fn listen(&mut self, miner: &mut MinerManager, shutdown: ShutdownHandler) -> Result<(), Error> {
         while let Some(msg) = self.stream.message().await? {
+            if shutdown.is_shutdown() {
+                break;
+            }
             match msg.payload {
                 Some(payload) => self.handle_message(payload, miner).await?,
                 None => warn!("kaspad message payload is empty"),

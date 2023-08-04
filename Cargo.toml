@@ -35,6 +35,7 @@ env_logger = "0.10"
 keccak = { version = "0.1", optional = true }
 parking = { package = "parking_lot", version = "0.12", optional = true }
 shuttle = { version = "0.6", optional = true }
+arc-swap = "1.6.0"
 
 [features]
 default = ["parking_lot"]
