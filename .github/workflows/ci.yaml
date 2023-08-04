@@ -2,32 +2,31 @@ name: Tests
 
 on: [push, pull_request]
 
+env:
+  CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse # Should improve the speed of the build and the cache size.
+  ZSTD_CLEVEL: 10 # We want some tradeoff between speed and size
+  ZSTD_NBTHREADS: 2 # We only got 2 cores
 jobs:
-
   check:
     name: Check
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
-      - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
+      - name: Install toolchain
+        id: rust-toolchain
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache
-        uses: actions/cache@v2
+      - name: Set up cache
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ matrix.target }}
+
+      - name: Install protoc
+        uses: taiki-e/install-action@v2
+        with:
+          tool: protoc
 
       - name: Run cargo check
         uses: actions-rs/cargo@v1
@@ -44,29 +43,21 @@ jobs:
         os: [ ubuntu-latest, macos-latest, windows-latest ]
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
-      - name: Fix CRLF on Windows
-        if: runner.os == 'Windows'
-        run: git config --global core.autocrlf false
+      - name: Install toolchain
+        id: rust-toolchain
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
+      - name: Set up cache
+        uses: Swatinem/rust-cache@v2
         with:
-          profile: minimal
-          toolchain: stable
-          override: true
+          key: ${{ matrix.target }}
 
-      - name: Cache
-        uses: actions/cache@v2
+      - name: Install protoc
+        uses: taiki-e/install-action@v2
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          tool: protoc
 
       - name: Run cargo test regular features
         uses: actions-rs/cargo@v1
@@ -78,7 +69,6 @@ jobs:
         with:
           command: test
           args: --features=no-asm
-
 
       - name: Run cargo test no parking_lot
         uses: actions-rs/cargo@v1
@@ -103,29 +93,21 @@ jobs:
         os: [ ubuntu-latest, macos-latest, windows-latest ]
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
-      - name: Fix CRLF on Windows
-        if: runner.os == 'Windows'
-        run: git config --global core.autocrlf false
+      - name: Install toolchain
+        id: rust-toolchain
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
+      - name: Set up cache
+        uses: Swatinem/rust-cache@v2
         with:
-          profile: minimal
-          toolchain: stable
-          override: true
+          key: ${{ matrix.target }}
 
-      - name: Cache
-        uses: actions/cache@v2
+      - name: Install protoc
+        uses: taiki-e/install-action@v2
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          tool: protoc
 
       - name: Run cargo test release regular features
         uses: actions-rs/cargo@v1
@@ -156,27 +138,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
-      - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
+      - name: Install toolchain
+        id: rust-toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
-          toolchain: stable
-          override: true
           components: rustfmt, clippy
 
-      - name: Cache
-        uses: actions/cache@v2
+      - name: Set up cache
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ matrix.target }}
 
+      - name: Install protoc
+        uses: taiki-e/install-action@v2
+        with:
+          tool: protoc
 
       - name: Run cargo fmt
         uses: actions-rs/cargo@v1

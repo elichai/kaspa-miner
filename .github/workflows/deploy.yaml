@@ -10,25 +10,26 @@ jobs:
       fail-fast: false
       matrix:
         # Build gnu-linux on ubuntu-18.04 and musl on ubuntu latest
-        os: [ ubuntu-18.04, ubuntu-latest, windows-latest, macos-latest ]
+        os: [ ubuntu-20.04, ubuntu-latest, windows-latest, macos-latest ]
     name: Building, ${{ matrix.os }}
     steps:
-      - name: Fix CRLF on Windows
-        if: runner.os == 'Windows'
-        run: git config --global core.autocrlf false
 
-      - name: Check out code into the Go module directory
-        uses: actions/checkout@v2
+      - name: Checkout sources
+        uses: actions/checkout@v3
 
-      - name: Setup Rust
-        uses: actions-rs/toolchain@v1
+      - name: Install toolchain
+        id: rust-toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
-          toolchain: stable
-          override: true
+          targets: ${{ matrix.target }}
+
+      - name: Install protoc
+        uses: taiki-e/install-action@v2
+        with:
+          tool: protoc
 
       - name: Build on Linux GNU
-        if: matrix.os == 'ubuntu-18.04'
+        if: matrix.os == 'ubuntu-20.04'
         # We're using musl to make the binaries statically linked and portable
         run: |
           cargo build --target=x86_64-unknown-linux-gnu --release
