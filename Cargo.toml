@@ -1,6 +1,6 @@
 [package]
 name = "kaspa-miner"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 license = "MIT/Apache-2.0"
 authors = ["Elichai <elichai.turkel@gmail.com>"]
@@ -42,6 +42,7 @@ default = []
 parking_lot = ["parking", "tokio/parking_lot"]
 bench = []
 no-asm = ["keccak"]
+
 [target.'cfg(any(not(target_arch = "x86_64"), target_os = "windows"))'.dependencies]
 keccak = "0.1"
 
