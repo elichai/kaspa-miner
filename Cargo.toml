@@ -38,7 +38,7 @@ shuttle = { version = "0.6", optional = true }
 arc-swap = "1.6.0"
 
 [features]
-default = ["parking_lot"]
+default = []
 parking_lot = ["parking", "tokio/parking_lot"]
 bench = []
 no-asm = ["keccak"]
