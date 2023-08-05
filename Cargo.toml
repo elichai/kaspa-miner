@@ -38,17 +38,18 @@ shuttle = { version = "0.6", optional = true }
 arc-swap = "1.6.0"
 
 [features]
-default = []
+default = ["keccak?/asm"]
 parking_lot = ["parking", "tokio/parking_lot"]
 bench = []
 no-asm = ["keccak"]
 
-[target.'cfg(any(not(target_arch = "x86_64"), target_os = "windows"))'.dependencies]
+[target.'cfg(not(target_arch = "x86_64"))'.dependencies]
 keccak = "0.1"
 
 [profile.release]
 lto = true
 codegen-units = 1
+strip = true
 
 [build-dependencies]
 tonic-build = { version = "0.9", default-features = false, features = ["prost", "transport"] }

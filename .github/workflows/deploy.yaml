@@ -62,12 +62,22 @@ jobs:
           echo "archive=${asset_name}" >> $GITHUB_ENV
           echo "asset_name=${asset_name}" >> $GITHUB_ENV
 
-      - name: Build on MacOS
+      - name: Build on MacOS for x86_64
         if: matrix.os == 'macos-latest'
         run: |
           cargo build --target=x86_64-apple-darwin --release
           asset_name="kaspa-miner-${{ github.event.release.tag_name }}-osx-amd64"
           mv ./target/x86_64-apple-darwin/release/kaspa-miner ${asset_name}
+          echo "archive=${asset_name}" >> $GITHUB_ENV
+          echo "asset_name=${asset_name}" >> $GITHUB_ENV
+
+      - name: Build on MacOS for M1/2
+        if: matrix.os == 'macos-latest'
+        run: |
+          rustup target add aarch64-apple-darwin
+          cargo build --target=aarch64-apple-darwin --release
+          asset_name="kaspa-miner-${{ github.event.release.tag_name }}-osx-aarch64"
+          mv ./target/aarch64-apple-darwin/release/kaspa-miner ${asset_name}
           echo "archive=${asset_name}" >> $GITHUB_ENV
           echo "asset_name=${asset_name}" >> $GITHUB_ENV
 
