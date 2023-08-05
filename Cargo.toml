@@ -1,6 +1,6 @@
 [package]
 name = "kaspa-miner"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 license = "MIT/Apache-2.0"
 authors = ["Elichai <elichai.turkel@gmail.com>"]
@@ -10,8 +10,7 @@ description = "A Kaspa high performance CPU miner"
 categories = ["command-line-utilities"]
 keywords = ["blockchain", "cli"]
 include = [
-    "src/**/*.rs",
-    "src/**/*.s",
+    "src/**",
     "proto/**",
     "Cargo.toml",
     "Cargo.lock",
@@ -32,10 +31,10 @@ blake2b_simd = "1.0.0"
 clap = { version = "4", features = ["derive", "color"] }
 log = "0.4"
 env_logger = "0.10"
+arc-swap = "1.6.0"
 keccak = { version = "0.1", optional = true }
 parking = { package = "parking_lot", version = "0.12", optional = true }
 shuttle = { version = "0.6", optional = true }
-arc-swap = "1.6.0"
 
 [features]
 default = ["keccak?/asm"]

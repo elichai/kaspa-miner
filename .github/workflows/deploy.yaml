@@ -28,6 +28,10 @@ jobs:
         with:
           tool: protoc
 
+
+      - name: Create bin directory
+        run: mkdir bin
+
       - name: Build on Linux GNU
         if: matrix.os == 'ubuntu-20.04'
         # We're using musl to make the binaries statically linked and portable
@@ -35,9 +39,7 @@ jobs:
           cargo build --target=x86_64-unknown-linux-gnu --release
           asset_name="kaspa-miner-${{ github.event.release.tag_name }}-linux-gnu-amd64"
           strip ./target/x86_64-unknown-linux-gnu/release/kaspa-miner
-          mv ./target/x86_64-unknown-linux-gnu/release/kaspa-miner ${asset_name}
-          echo "archive=${asset_name}" >> $GITHUB_ENV
-          echo "asset_name=${asset_name}" >> $GITHUB_ENV
+          mv ./target/x86_64-unknown-linux-gnu/release/kaspa-miner ./bin/${asset_name}
 
       - name: Build on Linux musl
         if: matrix.os == 'ubuntu-latest'
@@ -48,9 +50,7 @@ jobs:
           cargo build --target=x86_64-unknown-linux-musl --release
           asset_name="kaspa-miner-${{ github.event.release.tag_name }}-linux-musl-amd64"
           strip ./target/x86_64-unknown-linux-musl/release/kaspa-miner
-          mv ./target/x86_64-unknown-linux-musl/release/kaspa-miner ${asset_name}
-          echo "archive=${asset_name}" >> $GITHUB_ENV
-          echo "asset_name=${asset_name}" >> $GITHUB_ENV
+          mv ./target/x86_64-unknown-linux-musl/release/kaspa-miner ./bin/${asset_name}
 
       - name: Build on Windows
         if: matrix.os == 'windows-latest'
@@ -58,18 +58,14 @@ jobs:
         run: |
           cargo build --target=x86_64-pc-windows-msvc --release
           asset_name="kaspa-miner-${{ github.event.release.tag_name }}-win64-amd64.exe"
-          mv ./target/x86_64-pc-windows-msvc/release/kaspa-miner.exe ${asset_name}
-          echo "archive=${asset_name}" >> $GITHUB_ENV
-          echo "asset_name=${asset_name}" >> $GITHUB_ENV
+          mv ./target/x86_64-pc-windows-msvc/release/kaspa-miner.exe ./bin/${asset_name}
 
       - name: Build on MacOS for x86_64
         if: matrix.os == 'macos-latest'
         run: |
           cargo build --target=x86_64-apple-darwin --release
           asset_name="kaspa-miner-${{ github.event.release.tag_name }}-osx-amd64"
-          mv ./target/x86_64-apple-darwin/release/kaspa-miner ${asset_name}
-          echo "archive=${asset_name}" >> $GITHUB_ENV
-          echo "asset_name=${asset_name}" >> $GITHUB_ENV
+          mv ./target/x86_64-apple-darwin/release/kaspa-miner ./bin/${asset_name}
 
       - name: Build on MacOS for M1/2
         if: matrix.os == 'macos-latest'
@@ -77,17 +73,10 @@ jobs:
           rustup target add aarch64-apple-darwin
           cargo build --target=aarch64-apple-darwin --release
           asset_name="kaspa-miner-${{ github.event.release.tag_name }}-osx-aarch64"
-          mv ./target/aarch64-apple-darwin/release/kaspa-miner ${asset_name}
-          echo "archive=${asset_name}" >> $GITHUB_ENV
-          echo "asset_name=${asset_name}" >> $GITHUB_ENV
-
+          mv ./target/aarch64-apple-darwin/release/kaspa-miner ./bin/${asset_name}
 
       - name: Upload release asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v1
         with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: "./${{ env.archive }}"
-          asset_name: "${{ env.asset_name }}"
-          asset_content_type: application/zip
+          files: |
+            bin/*
