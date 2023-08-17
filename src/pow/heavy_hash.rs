@@ -2,7 +2,7 @@ use crate::pow::{hasher::HeavyHasher, xoshiro::XoShiRo256PlusPlus};
 use crate::Hash;
 use std::mem::MaybeUninit;
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
 pub struct Matrix([[u16; 64]; 64]);
 
 impl Matrix {

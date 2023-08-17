@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 pub use crate::pow::hasher::HeaderHasher;
 use crate::{
     pow::{
@@ -19,10 +17,10 @@ mod xoshiro;
 #[derive(Clone)]
 pub struct State {
     pub id: usize,
-    matrix: Arc<Matrix>,
+    matrix: Matrix,
     pub nonce: u64,
     target: Uint256,
-    block: Arc<RpcBlock>,
+    block: RpcBlock,
     // PRE_POW_HASH || TIME || 32 zero byte padding; without NONCE
     hasher: PowHasher,
 }
@@ -38,9 +36,9 @@ impl State {
         let pre_pow_hash = hasher.finalize();
         // PRE_POW_HASH || TIME || 32 zero byte padding || NONCE
         let hasher = PowHasher::new(pre_pow_hash, header.timestamp as u64);
-        let matrix = Arc::new(Matrix::generate(pre_pow_hash));
+        let matrix = Matrix::generate(pre_pow_hash);
 
-        Ok(Self { id, matrix, nonce: 0, target, block: Arc::new(block), hasher })
+        Ok(Self { id, matrix, nonce: 0, target, block, hasher })
     }
 
     #[inline(always)]
@@ -61,7 +59,7 @@ impl State {
     #[inline(always)]
     pub fn generate_block_if_pow(&self) -> Option<RpcBlock> {
         self.check_pow().then(|| {
-            let mut block = (*self.block).clone();
+            let mut block = self.block.clone();
             let header = block.header.as_mut().expect("We checked that a header exists on creation");
             header.nonce = self.nonce;
             block

@@ -26,7 +26,7 @@ pub struct Opt {
     pub devfund_percent: u16,
 
     #[clap(short, long, display_order = 2)]
-    /// Kaspad port [default: Mainnet = 16111, Testnet = 16211]
+    /// Kaspad port [default: Mainnet = 16110, Testnet = 16210]
     port: Option<u16>,
 
     #[clap(long, display_order = 4)]

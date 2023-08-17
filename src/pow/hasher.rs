@@ -98,7 +98,7 @@ mod tests {
     use crate::pow::hasher::{HeavyHasher, PowHasher};
     use crate::Hash;
     use sha3::digest::{ExtendableOutput, Update, XofReader};
-    use sha3::CShake256;
+    use sha3::{CShake256, CShake256Core};
 
     const PROOF_OF_WORK_DOMAIN: &[u8] = b"ProofOfWorkHash";
     const HEAVY_HASH_DOMAIN: &[u8] = b"HeavyHash";
@@ -111,7 +111,7 @@ mod tests {
         let hasher = PowHasher::new(pre_pow_hash, timestamp);
         let hash1 = hasher.finalize_with_nonce(nonce);
 
-        let hasher = CShake256::new(PROOF_OF_WORK_DOMAIN)
+        let hasher = CShake256::from_core(CShake256Core::new(PROOF_OF_WORK_DOMAIN))
             .chain(pre_pow_hash.to_le_bytes())
             .chain(timestamp.to_le_bytes())
             .chain([0u8; 32])
@@ -126,7 +126,7 @@ mod tests {
         let val = Hash::from_le_bytes([42; 32]);
         let hash1 = HeavyHasher::hash(val);
 
-        let hasher = CShake256::new(HEAVY_HASH_DOMAIN).chain(val.to_le_bytes());
+        let hasher = CShake256::from_core(CShake256Core::new(HEAVY_HASH_DOMAIN)).chain(val.to_le_bytes());
         let mut hash2 = [0u8; 32];
         hasher.finalize_xof().read(&mut hash2);
         assert_eq!(Hash::from_le_bytes(hash2), hash1);
