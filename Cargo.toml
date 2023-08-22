@@ -35,6 +35,7 @@ arc-swap = "1.6.0"
 keccak = { version = "0.1", optional = true }
 parking = { package = "parking_lot", version = "0.12", optional = true }
 shuttle = { version = "0.6", optional = true }
+chrono = "0.4"
 
 [features]
 default = ["keccak?/asm"]

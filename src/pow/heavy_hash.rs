@@ -1,5 +1,7 @@
-use crate::pow::{hasher::HeavyHasher, xoshiro::XoShiRo256PlusPlus};
-use crate::Hash;
+use crate::{
+    pow::{hasher::HeavyHasher, xoshiro::XoShiRo256PlusPlus},
+    Hash,
+};
 use std::mem::MaybeUninit;
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]

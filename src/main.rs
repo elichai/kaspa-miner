@@ -1,19 +1,21 @@
 #![cfg_attr(all(test, feature = "bench"), feature(test))]
 
-use std::error::Error as StdError;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
-
+use chrono::Local;
 use clap::Parser;
 use log::{info, warn};
+use std::error::Error as StdError;
+use std::{
+    io::Write,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
-use crate::cli::Opt;
-use crate::client::KaspadHandler;
-use crate::miner::MinerManager;
-use crate::proto::NotifyBlockAddedRequestMessage;
-use crate::target::Uint256;
+use crate::{
+    cli::Opt, client::KaspadHandler, miner::MinerManager, proto::NotifyBlockAddedRequestMessage, target::Uint256,
+};
 
 mod cli;
 mod client;
@@ -59,7 +61,18 @@ impl Drop for ShutdownOnDrop {
 async fn main() -> Result<(), Error> {
     let mut opt: Opt = Opt::parse();
     opt.process()?;
-    env_logger::builder().filter_level(opt.log_level()).parse_default_env().init();
+
+    let mut builder = env_logger::builder();
+    builder.filter_level(opt.log_level()).parse_default_env();
+    if opt.altlogs {
+        builder.format(|buf, record| {
+            let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S%.3f%:z");
+            writeln!(buf, "{} [{:>5}] {}", timestamp, record.level(), record.args())
+        });
+    }
+    builder.init();
+
+    let throttle = opt.throttle.map(Duration::from_millis);
     let shutdown = ShutdownHandler(Arc::new(AtomicBool::new(false)));
     let _shutdown_when_dropped = shutdown.arm();
 
@@ -78,7 +91,9 @@ async fn main() -> Result<(), Error> {
         }
         client.client_send(NotifyBlockAddedRequestMessage {}).await?;
         client.client_get_block_template().await?;
-        let mut miner_manager = MinerManager::new(client.send_channel.clone(), opt.num_threads, shutdown.clone());
+
+        let mut miner_manager =
+            MinerManager::new(client.send_channel.clone(), opt.num_threads, throttle, shutdown.clone());
         client.listen(&mut miner_manager, shutdown.clone()).await?;
         warn!("Disconnected from kaspad, retrying");
     }
