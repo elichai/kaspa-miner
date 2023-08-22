@@ -1,16 +1,24 @@
-use std::num::Wrapping;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use std::sync::Arc;
-use std::time::Duration;
-
-use crate::proto::{KaspadMessage, RpcBlock};
-use crate::swap_rust::WatchSwap;
-use crate::{pow, Error, ShutdownHandler};
+use crate::{
+    pow,
+    proto::{KaspadMessage, RpcBlock},
+    swap_rust::WatchSwap,
+    Error, ShutdownHandler,
+};
 use log::{info, warn};
 use rand::{thread_rng, RngCore};
-use tokio::sync::mpsc::Sender;
-use tokio::task::{self, JoinHandle};
-use tokio::time::MissedTickBehavior;
+use std::{
+    num::Wrapping,
+    sync::{
+        atomic::{AtomicU64, AtomicUsize, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
+use tokio::{
+    sync::mpsc::Sender,
+    task::{self, JoinHandle},
+    time::MissedTickBehavior,
+};
 
 type MinerHandler = std::thread::JoinHandle<Result<(), Error>>;
 
@@ -40,12 +48,24 @@ pub fn get_num_cpus(n_cpus: Option<u16>) -> u16 {
 const LOG_RATE: Duration = Duration::from_secs(10);
 
 impl MinerManager {
-    pub fn new(send_channel: Sender<KaspadMessage>, n_cpus: Option<u16>, shutdown: ShutdownHandler) -> Self {
+    pub fn new(
+        send_channel: Sender<KaspadMessage>,
+        n_cpus: Option<u16>,
+        throttle: Option<Duration>,
+        shutdown: ShutdownHandler,
+    ) -> Self {
         let hashes_tried = Arc::new(AtomicU64::new(0));
         let watch = WatchSwap::empty();
-        let handles =
-            Self::launch_cpu_threads(send_channel.clone(), Arc::clone(&hashes_tried), watch.clone(), shutdown, n_cpus)
-                .collect();
+        let handles = Self::launch_cpu_threads(
+            send_channel.clone(),
+            hashes_tried.clone(),
+            watch.clone(),
+            shutdown,
+            n_cpus,
+            throttle,
+        )
+        .collect();
+
         Self {
             handles,
             block_channel: watch,
@@ -63,11 +83,18 @@ impl MinerManager {
         work_channel: WatchSwap<pow::State>,
         shutdown: ShutdownHandler,
         n_cpus: Option<u16>,
+        throttle: Option<Duration>,
     ) -> impl Iterator<Item = MinerHandler> {
         let n_cpus = get_num_cpus(n_cpus);
-        info!("launching: {} cpu miners", n_cpus);
+        info!("Launching: {} cpu miners", n_cpus);
         (0..n_cpus).map(move |_| {
-            Self::launch_cpu_miner(send_channel.clone(), work_channel.clone(), hashes_tried.clone(), shutdown.clone())
+            Self::launch_cpu_miner(
+                send_channel.clone(),
+                work_channel.clone(),
+                hashes_tried.clone(),
+                throttle,
+                shutdown.clone(),
+            )
         })
     }
 
@@ -94,6 +121,7 @@ impl MinerManager {
         send_channel: Sender<KaspadMessage>,
         mut block_channel: WatchSwap<pow::State>,
         hashes_tried: Arc<AtomicU64>,
+        throttle: Option<Duration>,
         shutdown: ShutdownHandler,
     ) -> MinerHandler {
         // We mark it cold as the function is not called often, and it's not in the hot path
@@ -128,6 +156,10 @@ impl MinerManager {
                     if let Some(new_state) = block_channel.get_changed() {
                         state = new_state.as_deref().cloned();
                     }
+                }
+
+                if let Some(sleep_duration) = throttle {
+                    std::thread::sleep(sleep_duration)
                 }
             }
         })

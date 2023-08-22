@@ -1,9 +1,9 @@
-use crate::proto::{
-    kaspad_message::Payload, GetBlockTemplateRequestMessage, GetInfoRequestMessage, KaspadMessage,
-    NotifyBlockAddedRequestMessage, RpcBlock, SubmitBlockRequestMessage,
-};
 use crate::{
     pow::{self, HeaderHasher},
+    proto::{
+        kaspad_message::Payload, GetBlockTemplateRequestMessage, GetInfoRequestMessage, KaspadMessage,
+        NotifyBlockAddedRequestMessage, RpcBlock, SubmitBlockRequestMessage,
+    },
     Hash,
 };
 

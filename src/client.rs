@@ -1,7 +1,11 @@
-use crate::proto::kaspad_message::Payload;
-use crate::proto::rpc_client::RpcClient;
-use crate::proto::{GetBlockTemplateRequestMessage, GetInfoRequestMessage, KaspadMessage};
-use crate::{miner::MinerManager, Error, ShutdownHandler};
+use crate::{
+    miner::MinerManager,
+    proto::{
+        kaspad_message::Payload, rpc_client::RpcClient, GetBlockTemplateRequestMessage, GetInfoRequestMessage,
+        KaspadMessage,
+    },
+    Error, ShutdownHandler,
+};
 use log::{error, info, warn};
 use tokio::sync::mpsc::{self, error::SendError, Sender};
 use tokio_stream::wrappers::ReceiverStream;
@@ -86,7 +90,7 @@ impl KaspadHandler {
                 (None, true, None) => error!("No block and No Error!"),
             },
             Payload::SubmitBlockResponse(res) => match res.error {
-                None => info!("block submitted successfully!"),
+                None => info!("Block submitted successfully!"),
                 Some(e) => warn!("Failed submitting block: {:?}", e),
             },
             Payload::GetBlockResponse(msg) => {
@@ -100,7 +104,7 @@ impl KaspadHandler {
                 None => info!("Registered for block notifications"),
                 Some(e) => error!("Failed registering for block notifications: {:?}", e),
             },
-            msg => info!("got unknown msg: {:?}", msg),
+            msg => info!("Got unknown msg: {:?}", msg),
         }
         Ok(())
     }
