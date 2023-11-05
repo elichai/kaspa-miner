@@ -140,7 +140,9 @@ impl MinerManager {
                 if state.is_none() {
                     state = block_channel.wait_for_change().as_deref().cloned();
                 }
-                let Some(state_ref) = state.as_mut() else {continue;};
+                let Some(state_ref) = state.as_mut() else {
+                    continue;
+                };
                 state_ref.nonce = nonce.0;
 
                 if let Some(block) = state_ref.generate_block_if_pow() {
