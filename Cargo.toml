@@ -1,6 +1,6 @@
 [package]
 name = "kaspa-miner"
-version = "0.2.3"
+version = "0.2.4"
 edition = "2021"
 license = "MIT/Apache-2.0"
 authors = ["Elichai <elichai.turkel@gmail.com>"]
@@ -21,9 +21,9 @@ include = [
 ]
 
 [dependencies]
-tonic = "0.9"
+tonic = "0.10"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-prost = "0.11"
+prost = "0.12"
 tokio-stream = "0.1"
 num_cpus = "1"
 rand = "0.8"
@@ -52,7 +52,7 @@ codegen-units = 1
 strip = true
 
 [build-dependencies]
-tonic-build = { version = "0.9", default-features = false, features = ["prost", "transport"] }
+tonic-build = { version = "0.10", default-features = false, features = ["prost", "transport"] }
 cc = "1"
 
 [dev-dependencies]
