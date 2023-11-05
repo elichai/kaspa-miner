@@ -86,7 +86,7 @@ impl Opt {
     }
 
     fn port(&mut self) -> u16 {
-        *self.port.get_or_insert(if self.testnet { 16211 } else { 16110 })
+        *self.port.get_or_insert(if self.testnet { 16210 } else { 16110 })
     }
 
     pub fn log_level(&self) -> LevelFilter {
