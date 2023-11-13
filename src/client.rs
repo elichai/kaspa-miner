@@ -108,6 +108,10 @@ impl KaspadHandler {
                 info!("Get block response: {:?}", msg);
             }
             Payload::GetInfoResponse(info) => info!("Kaspad version: {}", info.server_version),
+            Payload::NotifyNewBlockTemplateResponse(res) => match res.error {
+                None => info!("Registered for new template notifications"),
+                Some(e) => error!("Failed registering for new template notifications: {:?}", e),
+            },
             Payload::NotifyBlockAddedResponse(res) => match res.error {
                 None => info!("Registered for block notifications"),
                 Some(e) => error!("Failed registering for block notifications: {:?}", e),
