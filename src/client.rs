@@ -88,7 +88,6 @@ impl KaspadHandler {
 
     async fn handle_message(&mut self, msg: Payload, miner: &mut MinerManager) -> Result<(), Error> {
         match msg {
-            Payload::BlockAddedNotification(_) => self.client_get_block_template().await?,
             Payload::NewBlockTemplateNotification(_) => self.client_get_block_template().await?,
             Payload::GetBlockTemplateResponse(template) => match (template.block, template.is_synced, template.error) {
                 (Some(b), true, None) => miner.process_block(Some(b))?,
@@ -111,10 +110,6 @@ impl KaspadHandler {
             Payload::NotifyNewBlockTemplateResponse(res) => match res.error {
                 None => info!("Registered for new template notifications"),
                 Some(e) => error!("Failed registering for new template notifications: {:?}", e),
-            },
-            Payload::NotifyBlockAddedResponse(res) => match res.error {
-                None => info!("Registered for block notifications"),
-                Some(e) => error!("Failed registering for block notifications: {:?}", e),
             },
             msg => info!("Got unknown msg: {:?}", msg),
         }
