@@ -11,6 +11,8 @@ use tokio::sync::mpsc::{self, error::SendError, Sender};
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{transport::Channel as TonicChannel, Streaming};
 
+static EXTRA_DATA: &str = concat!(env!("CARGO_PKG_VERSION"));
+
 #[allow(dead_code)]
 pub struct KaspadHandler {
     client: RpcClient<TonicChannel>,
@@ -32,7 +34,12 @@ impl KaspadHandler {
         let mut client = RpcClient::connect(address).await?;
         let (send_channel, recv) = mpsc::channel(3);
         send_channel.send(GetInfoRequestMessage {}.into()).await?;
-        send_channel.send(GetBlockTemplateRequestMessage { pay_address: miner_address.clone() }.into()).await?;
+        send_channel
+            .send(
+                GetBlockTemplateRequestMessage { pay_address: miner_address.clone(), extra_data: EXTRA_DATA.into() }
+                    .into(),
+            )
+            .await?;
         let stream = client.message_stream(ReceiverStream::new(recv)).await?.into_inner();
         Ok(Self {
             client,
@@ -63,7 +70,7 @@ impl KaspadHandler {
             _ => self.miner_address.clone(),
         };
         self.block_template_ctr += 1;
-        self.client_send(GetBlockTemplateRequestMessage { pay_address }).await
+        self.client_send(GetBlockTemplateRequestMessage { pay_address, extra_data: EXTRA_DATA.into() }).await
     }
 
     pub async fn listen(&mut self, miner: &mut MinerManager, shutdown: ShutdownHandler) -> Result<(), Error> {
@@ -82,6 +89,7 @@ impl KaspadHandler {
     async fn handle_message(&mut self, msg: Payload, miner: &mut MinerManager) -> Result<(), Error> {
         match msg {
             Payload::BlockAddedNotification(_) => self.client_get_block_template().await?,
+            Payload::NewBlockTemplateNotification(_) => self.client_get_block_template().await?,
             Payload::GetBlockTemplateResponse(template) => match (template.block, template.is_synced, template.error) {
                 (Some(b), true, None) => miner.process_block(Some(b))?,
                 (Some(b), false, None) if self.mine_when_not_synced => miner.process_block(Some(b))?,

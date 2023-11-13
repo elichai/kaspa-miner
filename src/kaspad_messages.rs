@@ -21,7 +21,12 @@ impl KaspadMessage {
     #[must_use]
     #[inline(always)]
     pub fn submit_block(block: RpcBlock) -> Self {
-        KaspadMessage { payload: Some(Payload::SubmitBlockRequest(SubmitBlockRequestMessage { block: Some(block) })) }
+        KaspadMessage {
+            payload: Some(Payload::SubmitBlockRequest(SubmitBlockRequestMessage {
+                block: Some(block),
+                allow_non_daa_blocks: false,
+            })),
+        }
     }
 }
 
