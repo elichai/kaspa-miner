@@ -2,7 +2,7 @@ use crate::{
     pow::{self, HeaderHasher},
     proto::{
         kaspad_message::Payload, GetBlockTemplateRequestMessage, GetInfoRequestMessage, KaspadMessage,
-        NotifyBlockAddedRequestMessage, RpcBlock, SubmitBlockRequestMessage,
+        NotifyBlockAddedRequestMessage, RpcBlock, SubmitBlockRequestMessage, NotifyNewBlockTemplateRequestMessage,
     },
     Hash,
 };
@@ -47,6 +47,12 @@ impl From<GetBlockTemplateRequestMessage> for KaspadMessage {
     #[inline(always)]
     fn from(a: GetBlockTemplateRequestMessage) -> Self {
         KaspadMessage { payload: Some(Payload::GetBlockTemplateRequest(a)) }
+    }
+}
+
+impl From<NotifyNewBlockTemplateRequestMessage> for KaspadMessage {
+    fn from(a: NotifyNewBlockTemplateRequestMessage) -> Self {
+        KaspadMessage { payload: Some(Payload::NotifyNewBlockTemplateRequest(a)) }
     }
 }
 
