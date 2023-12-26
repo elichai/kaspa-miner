@@ -2,7 +2,7 @@ use crate::{
     pow::{self, HeaderHasher},
     proto::{
         kaspad_message::Payload, GetBlockTemplateRequestMessage, GetInfoRequestMessage, KaspadMessage,
-        NotifyBlockAddedRequestMessage, RpcBlock, SubmitBlockRequestMessage, NotifyNewBlockTemplateRequestMessage,
+        NotifyBlockAddedRequestMessage, NotifyNewBlockTemplateRequestMessage, RpcBlock, SubmitBlockRequestMessage,
     },
     Hash,
 };
