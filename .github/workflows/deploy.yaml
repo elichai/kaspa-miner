@@ -9,74 +9,135 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Build gnu-linux on ubuntu-18.04 and musl on ubuntu latest
-        os: [ ubuntu-20.04, ubuntu-latest, windows-latest, macos-latest ]
-    name: Building, ${{ matrix.os }}
+        include:
+        - os: ubuntu-20.04
+          TARGET: linux-gnu/amd64
+        - os: ubuntu-latest
+          TARGET: linux-musl/amd64
+        - os: ubuntu-latest
+          TARGET: linux-gnu/aarch64
+        - os: ubuntu-latest
+          TARGET: android/aarch64
+        - os: windows-latest
+          TARGET: windows-msvc/amd64
+        - os: macos-latest
+          TARGET: macos/amd64
+        - os: macos-latest
+          TARGET: macos/aarch64
+    name: Build on ${{ matrix.TARGET }}
     steps:
-
       - name: Checkout sources
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install toolchain
-        id: rust-toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
 
       - name: Install protoc
         uses: taiki-e/install-action@v2
         with:
           tool: protoc
 
-
       - name: Create bin directory
         run: mkdir bin
 
       - name: Build on Linux GNU
-        if: matrix.os == 'ubuntu-20.04'
-        # We're using musl to make the binaries statically linked and portable
+        if: matrix.TARGET == 'linux-gnu/amd64'
         run: |
+          rustup target add x86_64-unknown-linux-gnu
           cargo build --target=x86_64-unknown-linux-gnu --release
+          archive="bin/kaspa-miner-${{ github.event.release.tag_name }}-linux-gnu-amd64.zip"
           asset_name="kaspa-miner-${{ github.event.release.tag_name }}-linux-gnu-amd64"
           strip ./target/x86_64-unknown-linux-gnu/release/kaspa-miner
           mv ./target/x86_64-unknown-linux-gnu/release/kaspa-miner ./bin/${asset_name}
+          zip -r "${archive}" ./bin/${asset_name}
+          rm ./bin/${asset_name}
 
       - name: Build on Linux musl
-        if: matrix.os == 'ubuntu-latest'
-        # We're using musl to make the binaries statically linked and portable
+        if: matrix.TARGET == 'linux-musl/amd64'
         run: |
           sudo apt-get install -y musl-tools
           rustup target add x86_64-unknown-linux-musl
           cargo build --target=x86_64-unknown-linux-musl --release
+          archive="bin/kaspa-miner-${{ github.event.release.tag_name }}-linux-musl-amd64.zip"
           asset_name="kaspa-miner-${{ github.event.release.tag_name }}-linux-musl-amd64"
           strip ./target/x86_64-unknown-linux-musl/release/kaspa-miner
           mv ./target/x86_64-unknown-linux-musl/release/kaspa-miner ./bin/${asset_name}
+          zip -r "${archive}" ./bin/${asset_name}
+          rm ./bin/${asset_name}
+
+      - name: Build on Linux for linux-gnu/aarch64
+        if: matrix.TARGET == 'linux-gnu/aarch64'
+        env:
+          TARGET_CC: aarch64-linux-gnu-gcc
+          TARGET_CXX: aarch64-linux-gnu-g++
+          RUSTFLAGS: -C linker=aarch64-linux-gnu-gcc
+        run: |
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          rustup target add aarch64-unknown-linux-gnu
+          cargo build --target=aarch64-unknown-linux-gnu --release
+          archive="bin/kaspa-miner-${{ github.event.release.tag_name }}-linux-gnu-arm64.zip"
+          asset_name="kaspa-miner-${{ github.event.release.tag_name }}-linux-gnu-arm64"
+          mv ./target/aarch64-unknown-linux-gnu/release/kaspa-miner ./bin/${asset_name}
+          zip -r "${archive}" ./bin/${asset_name}
+          rm ./bin/${asset_name}
+
+      - name: Build for Android ARM64
+        if: matrix.TARGET == 'android/aarch64'
+        env:
+          TARGET_CC: aarch64-linux-android21-clang
+          TARGET_CXX: aarch64-linux-android21-clang++
+          RUSTFLAGS: -C linker=aarch64-linux-android21-clang
+        run: |
+          curl -sSL https://dl.google.com/android/repository/android-ndk-r27c-linux.zip -o android-ndk.zip
+          unzip android-ndk.zip -d $HOME
+          export ANDROID_NDK_HOME=$HOME/android-ndk-r27c
+          export PATH=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
+
+          rustup target add aarch64-linux-android
+          cargo build --target=aarch64-linux-android --release
+
+          archive="bin/kaspa-miner-${{ github.event.release.tag_name }}-android-arm64.zip"
+          asset_name="kaspa-miner-${{ github.event.release.tag_name }}-android-arm64"
+          mv ./target/aarch64-linux-android/release/kaspa-miner ./bin/${asset_name}
+          zip -r "${archive}" ./bin/${asset_name}
+          rm ./bin/${asset_name}
 
       - name: Build on Windows
-        if: matrix.os == 'windows-latest'
+        if: matrix.TARGET == 'windows-msvc/amd64'
         shell: bash
         run: |
+          rustup target add x86_64-pc-windows-msvc
           cargo build --target=x86_64-pc-windows-msvc --release
+          archive="bin/kaspa-miner-${{ github.event.release.tag_name }}-win64-amd64.zip"
           asset_name="kaspa-miner-${{ github.event.release.tag_name }}-win64-amd64.exe"
           mv ./target/x86_64-pc-windows-msvc/release/kaspa-miner.exe ./bin/${asset_name}
+          7z a -tzip -r "${archive}" bin/${asset_name}
+          rm ./bin/${asset_name}
 
       - name: Build on MacOS for x86_64
-        if: matrix.os == 'macos-latest'
+        if: matrix.TARGET == 'macos/amd64'
         run: |
+          rustup target add x86_64-apple-darwin
           cargo build --target=x86_64-apple-darwin --release
+          archive="bin/kaspa-miner-${{ github.event.release.tag_name }}-osx-amd64.zip"
           asset_name="kaspa-miner-${{ github.event.release.tag_name }}-osx-amd64"
           mv ./target/x86_64-apple-darwin/release/kaspa-miner ./bin/${asset_name}
+          zip -r "${archive}" ./bin/${asset_name}
+          rm ./bin/${asset_name}
 
       - name: Build on MacOS for M1/2
-        if: matrix.os == 'macos-latest'
+        if: matrix.TARGET == 'macos/aarch64'
         run: |
           rustup target add aarch64-apple-darwin
           cargo build --target=aarch64-apple-darwin --release
+          archive="bin/kaspa-miner-${{ github.event.release.tag_name }}-osx-aarch64.zip"
           asset_name="kaspa-miner-${{ github.event.release.tag_name }}-osx-aarch64"
           mv ./target/aarch64-apple-darwin/release/kaspa-miner ./bin/${asset_name}
+          zip -r "${archive}" ./bin/${asset_name}
+          rm ./bin/${asset_name}
 
       - name: Upload release asset
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
-            bin/*
+            bin/*.zip

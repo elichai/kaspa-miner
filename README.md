@@ -1,5 +1,5 @@
 # Kaspa-miner
-[![Build status](https://github.com/elichai/kaspa-miner/workflows/ci/badge.svg)](https://github.com/elichai/kaspa-miner/actions)
+[![Build status](https://github.com/elichai/kaspa-miner/actions/workflows/ci.yaml/badge.svg)](https://github.com/elichai/kaspa-miner/actions/workflows/ci.yaml)
 [![Latest version](https://img.shields.io/crates/v/kaspa-miner.svg)](https://crates.io/crates/kaspa-miner)
 ![License](https://img.shields.io/crates/l/kaspa-miner.svg)
 [![dependency status](https://deps.rs/repo/github/elichai/kaspa-miner/status.svg)](https://deps.rs/repo/github/elichai/kaspa-miner)

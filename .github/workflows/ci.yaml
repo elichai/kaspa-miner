@@ -6,22 +6,18 @@ env:
   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse # Should improve the speed of the build and the cache size.
   ZSTD_CLEVEL: 10 # We want some tradeoff between speed and size
   ZSTD_NBTHREADS: 2 # We only got 2 cores
+
 jobs:
   check:
     name: Check
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install toolchain
         id: rust-toolchain
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Set up cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.target }}
 
       - name: Install protoc
         uses: taiki-e/install-action@v2
@@ -29,10 +25,7 @@ jobs:
           tool: protoc
 
       - name: Run cargo check
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
-          args: --tests
+        run: cargo check --tests
 
   test:
     name: Test Suite
@@ -40,19 +33,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-latest, macos-latest, windows-latest ]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install toolchain
         id: rust-toolchain
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Set up cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.target }}
 
       - name: Install protoc
         uses: taiki-e/install-action@v2
@@ -60,29 +48,16 @@ jobs:
           tool: protoc
 
       - name: Run cargo test regular features
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
+        run: cargo test
 
       - name: Run cargo test no asm
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --features=no-asm
+        run: cargo test --features=no-asm
 
       - name: Run cargo test with parking_lot
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --features parking_lot
+        run: cargo test --features=parking_lot
 
       - name: Run cargo test shuttle
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --features=shuttle
-
-
+        run: cargo test --features=shuttle
 
   test-release:
     name: Test Suite Release
@@ -90,19 +65,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-latest, macos-latest, windows-latest ]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install toolchain
         id: rust-toolchain
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Set up cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.target }}
 
       - name: Install protoc
         uses: taiki-e/install-action@v2
@@ -110,35 +80,23 @@ jobs:
           tool: protoc
 
       - name: Run cargo test release regular features
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --release
+        run: cargo test --release
 
       - name: Run cargo test release no asm
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --features=no-asm --release
+        run: cargo test --features=no-asm --release
 
       - name: Run cargo test release with parking_lot
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --features=parking_lot --release
+        run: cargo test --features=parking_lot --release
 
       - name: Run cargo test release shuttle
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --no-default-features --features=shuttle --release
+        run: cargo test --no-default-features --features=shuttle --release
 
   lints:
     name: Lints
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install toolchain
         id: rust-toolchain
@@ -146,24 +104,13 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Set up cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.target }}
-
       - name: Install protoc
         uses: taiki-e/install-action@v2
         with:
           tool: protoc
 
       - name: Run cargo fmt
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+        run: cargo fmt --all -- --check
 
       - name: Run cargo clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: --tests -- -D warnings
+        run: cargo clippy --tests -- -D warnings

@@ -16,6 +16,7 @@ mod xoshiro;
 
 #[derive(Clone)]
 pub struct State {
+    #[allow(dead_code)]
     pub id: usize,
     matrix: Matrix,
     pub nonce: u64,
@@ -136,7 +137,7 @@ fn decode_to_slice<T: AsRef<[u8]>>(data: T, out: &mut [u8]) -> Result<(), FromHe
     }
 
     for (i, byte) in out.iter_mut().enumerate() {
-        *byte = val(data[2 * i], 2 * i)? << 4 | val(data[2 * i + 1], 2 * i + 1)?;
+        *byte = (val(data[2 * i], 2 * i)? << 4) | val(data[2 * i + 1], 2 * i + 1)?;
     }
 
     #[inline(always)]
