@@ -5,8 +5,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed=src/asm");
     tonic_build::configure()
         .build_server(false)
+        .build_client(true)
+        .protoc_arg("--experimental_allow_proto3_optional")
         // .type_attribute(".", "#[derive(Debug)]")
-        .compile(
+        .compile_protos(
             &["proto/rpc.proto", "proto/p2p.proto", "proto/messages.proto"],
             &["proto"],
         )?;
