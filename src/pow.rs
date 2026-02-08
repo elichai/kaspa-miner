@@ -101,8 +101,8 @@ pub fn serialize_header<H: Hasher>(hasher: &mut H, header: &RpcBlockHeader, for_
         .update(header.blue_score.to_le_bytes());
 
     // I'm assuming here BlueWork will never pass 256 bits.
-    let blue_work_len = (header.blue_work.len() + 1) / 2;
-    if header.blue_work.len() % 2 == 0 {
+    let blue_work_len = header.blue_work.len().div_ceil(2);
+    if header.blue_work.len().is_multiple_of(2) {
         decode_to_slice(&header.blue_work, &mut hash[..blue_work_len]).unwrap();
     } else {
         let mut blue_work = String::with_capacity(header.blue_work.len() + 1);
