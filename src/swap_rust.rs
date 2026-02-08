@@ -102,18 +102,20 @@ mod sync {
     use std::sync::{Condvar as CondvarInternal, Mutex as MutexInternal, MutexGuard};
 
     #[cfg(feature = "shuttle")]
-    pub use shuttle::{
-        sync::{
-            atomic::{AtomicBool, AtomicUsize, Ordering},
-            Arc, Barrier,
-        },
-        thread,
-    };
+    pub use shuttle::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    #[cfg(feature = "shuttle")]
+    pub use shuttle::sync::Arc;
+    #[cfg(all(feature = "shuttle", test))]
+    pub use shuttle::sync::Barrier;
+    #[cfg(all(feature = "shuttle", test))]
+    pub use shuttle::thread;
+
     #[cfg(not(feature = "shuttle"))]
-    pub use std::{
-        sync::{Arc, Barrier},
-        thread,
-    };
+    pub use std::sync::Arc;
+    #[cfg(all(not(feature = "shuttle"), test))]
+    pub use std::sync::Barrier;
+    #[cfg(all(not(feature = "shuttle"), test))]
+    pub use std::thread;
 
     pub struct Mutex<T>(MutexInternal<T>);
     impl<T> Mutex<T> {
@@ -122,7 +124,7 @@ mod sync {
         }
 
         #[inline(always)]
-        pub fn lock(&self) -> MutexGuard<T> {
+        pub fn lock(&self) -> MutexGuard<'_, T> {
             #[cfg(not(feature = "parking_lot"))]
             return self.0.lock().unwrap_or_else(|e| e.into_inner());
             #[cfg(feature = "parking_lot")]

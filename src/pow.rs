@@ -16,7 +16,7 @@ mod xoshiro;
 
 #[derive(Clone)]
 pub struct State {
-    pub id: usize,
+    pub _id: usize,
     matrix: Matrix,
     pub nonce: u64,
     target: Uint256,
@@ -38,7 +38,7 @@ impl State {
         let hasher = PowHasher::new(pre_pow_hash, header.timestamp as u64);
         let matrix = Matrix::generate(pre_pow_hash);
 
-        Ok(Self { id, matrix, nonce: 0, target, block, hasher })
+        Ok(Self { _id: id, matrix, nonce: 0, target, block, hasher })
     }
 
     #[inline(always)]
