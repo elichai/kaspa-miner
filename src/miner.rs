@@ -150,7 +150,7 @@ impl MinerManager {
                 }
                 nonce += Wrapping(1);
 
-                if nonce.0 % 128 == 0 {
+                if nonce.0.is_multiple_of(128) {
                     hashes_tried.fetch_add(128, Ordering::Relaxed);
                     if shutdown.is_shutdown() {
                         return Ok(());

@@ -5,12 +5,10 @@
 // Having received a RequestMessage, (wrapped in a KaspadMessage) the RPC server will respond with a
 // ResponseMessage (likewise wrapped in a KaspadMessage) respective to the original RequestMessage.
 //
-// **IMPORTANT:** This API is a work in progress and is subject to break between versions.
 //
 syntax = "proto3";
 package protowire;
 
-option go_package = "github.com/kaspanet/kaspad/protowire";
 
 // RPCError represents a generic non-internal error.
 //
@@ -86,6 +84,12 @@ message RpcTransactionOutput {
   uint64 amount = 1;
   RpcScriptPublicKey scriptPublicKey = 2;
   RpcTransactionOutputVerboseData verboseData = 3;
+  optional RpcCovenantBinding covenant = 4;
+}
+
+message RpcCovenantBinding {
+  uint32 authorizing_input = 1;
+  string covenant_id = 2;
 }
 
 message RpcOutpoint {
@@ -98,6 +102,7 @@ message RpcUtxoEntry {
   RpcScriptPublicKey scriptPublicKey = 2;
   uint64 blockDaaScore = 3;
   bool isCoinbase = 4;
+  string covenant_id = 6;
 }
 
 message RpcTransactionVerboseData{
