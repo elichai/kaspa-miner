@@ -9,8 +9,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Build gnu-linux on ubuntu-18.04 and musl on ubuntu latest
-        os: [ ubuntu-20.04, ubuntu-latest, windows-latest, macos-latest ]
+        # Build gnu-linux on ubuntu-22.04 and musl on ubuntu latest
+        os: [ ubuntu-22.04, ubuntu-latest, windows-latest, macos-latest ]
     name: Building, ${{ matrix.os }}
     steps:
 
@@ -33,7 +33,7 @@ jobs:
         run: mkdir bin
 
       - name: Build on Linux GNU
-        if: matrix.os == 'ubuntu-20.04'
+        if: matrix.os == 'ubuntu-22.04'
         # We're using musl to make the binaries statically linked and portable
         run: |
           cargo build --target=x86_64-unknown-linux-gnu --release
@@ -63,6 +63,7 @@ jobs:
       - name: Build on MacOS for x86_64
         if: matrix.os == 'macos-latest'
         run: |
+          rustup target add x86_64-apple-darwin
           cargo build --target=x86_64-apple-darwin --release
           asset_name="kaspa-miner-${{ github.event.release.tag_name }}-osx-amd64"
           mv ./target/x86_64-apple-darwin/release/kaspa-miner ./bin/${asset_name}
