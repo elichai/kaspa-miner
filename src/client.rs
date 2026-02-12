@@ -23,20 +23,39 @@ pub struct KaspadHandler {
     devfund_address: Option<String>,
     devfund_percent: u16,
     block_template_ctr: u64,
+    extra_data: String,
 }
 
 impl KaspadHandler {
-    pub async fn connect<D>(address: D, miner_address: String, mine_when_not_synced: bool) -> Result<Self, Error>
+    pub async fn connect<D>(
+        address: D,
+        miner_address: String,
+        mine_when_not_synced: bool,
+        user_agent_suffix: Option<String>,
+    ) -> Result<Self, Error>
     where
         D: TryInto<tonic::transport::Endpoint>,
         D::Error: Into<Error>,
     {
         let mut client = RpcClient::connect(address).await?;
         let (send_channel, recv) = mpsc::channel(3);
+
+        let extra_data = match user_agent_suffix {
+            Some(suffix) => {
+                let extra_data = format!("{}/{}", EXTRA_DATA, suffix);
+                info!("Using user agent: {}", extra_data);
+                extra_data
+            }
+            None => {
+                info!("Using user agent: {}, specify --user-agent-suffix to customize", EXTRA_DATA);
+                EXTRA_DATA.to_string()
+            }
+        };
+
         send_channel.send(GetInfoRequestMessage {}.into()).await?;
         send_channel
             .send(
-                GetBlockTemplateRequestMessage { pay_address: miner_address.clone(), extra_data: EXTRA_DATA.into() }
+                GetBlockTemplateRequestMessage { pay_address: miner_address.clone(), extra_data: extra_data.clone() }
                     .into(),
             )
             .await?;
@@ -50,6 +69,7 @@ impl KaspadHandler {
             devfund_address: None,
             devfund_percent: 0,
             block_template_ctr: 0,
+            extra_data,
         })
     }
 
@@ -70,7 +90,7 @@ impl KaspadHandler {
             _ => self.miner_address.clone(),
         };
         self.block_template_ctr += 1;
-        self.client_send(GetBlockTemplateRequestMessage { pay_address, extra_data: EXTRA_DATA.into() }).await
+        self.client_send(GetBlockTemplateRequestMessage { pay_address, extra_data: self.extra_data.clone() }).await
     }
 
     pub async fn listen(&mut self, miner: &mut MinerManager, shutdown: ShutdownHandler) -> Result<(), Error> {

@@ -44,6 +44,9 @@ pub struct Opt {
     #[clap(long, display_order = 10)]
     /// Output logs in alternative format (same as kaspad)
     pub altlogs: bool,
+    #[clap(long = "user-agent-suffix", display_order = 11)]
+    /// Custom user agent suffix (max 20 characters)
+    pub user_agent_suffix: Option<String>,
 }
 
 fn parse_devfund_percent(s: &str) -> Result<u16, &'static str> {
@@ -81,6 +84,15 @@ impl Opt {
             self.kaspad_address = format!("grpc://{}:{}", self.kaspad_address, port);
         }
         log::info!("Kaspad address: {}", self.kaspad_address);
+
+        if let Some(suffix) = &self.user_agent_suffix {
+            if suffix.contains('/') {
+                return Err("--user-agent-suffix cannot contain '/' characters".into());
+            }
+            if suffix.chars().count() > 20 {
+                return Err("--user-agent-suffix must be at most 20 characters".into());
+            }
+        }
 
         Ok(())
     }

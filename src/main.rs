@@ -77,9 +77,13 @@ async fn main() -> Result<(), Error> {
     let _shutdown_when_dropped = shutdown.arm();
 
     while !shutdown.is_shutdown() {
-        let mut client =
-            KaspadHandler::connect(opt.kaspad_address.clone(), opt.mining_address.clone(), opt.mine_when_not_synced)
-                .await?;
+        let mut client = KaspadHandler::connect(
+            opt.kaspad_address.clone(),
+            opt.mining_address.clone(),
+            opt.mine_when_not_synced,
+            opt.user_agent_suffix.clone(),
+        )
+        .await?;
         if let Some(devfund_address) = &opt.devfund_address {
             client.add_devfund(devfund_address.clone(), opt.devfund_percent);
             info!(
