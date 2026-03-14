@@ -1,0 +1,153 @@
+name: Docker Native Image
+
+on:
+  push:
+    branches:
+      - "**"
+  release:
+    types:
+      - published
+
+jobs:
+  build:
+    if: ${{ vars.DOCKER_REPO }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            platform: linux/amd64
+          - os: ubuntu-22.04-arm
+            platform: linux/arm64
+    steps:
+      - name: Prepare
+        run: |
+          platform=${{ matrix.platform }}
+          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ vars.DOCKER_REPO }}
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Git describe version
+        run: echo "GIT_VERSION=$(git describe --tags --always)" >> $GITHUB_ENV
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ env.GIT_VERSION }}
+          outputs: type=image,"name=${{ vars.DOCKER_REPO }}",push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        run: |
+          mkdir -p ${{ runner.temp }}/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    runs-on: ubuntu-latest
+    needs:
+      - build
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker meta
+        id: meta
+        if: github.event_name != 'release' || github.event.release.prerelease == true
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ vars.DOCKER_REPO }}
+          flavor: |
+            latest=false
+          tags: |
+            type=sha,prefix=
+            type=ref,event=branch
+            type=ref,event=tag
+
+      - name: Docker meta - release
+        id: meta_release
+        if: github.event_name == 'release' && github.event.release.prerelease == false
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ vars.DOCKER_REPO }}
+          flavor: |
+            latest=true
+          tags: |
+            type=sha,prefix=
+            type=ref,event=tag
+
+      - name: Create manifest list and push
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ vars.DOCKER_REPO }}@sha256:%s ' *)
+
+      - name: Inspect image
+        if: github.event_name != 'release' || github.event.release.prerelease == true
+        run: |
+          docker buildx imagetools inspect ${{ vars.DOCKER_REPO }}:${{ steps.meta.outputs.version }}
+
+      - name: Inspect image release
+        if: github.event_name == 'release' && github.event.release.prerelease == false
+        run: |
+          docker buildx imagetools inspect ${{ vars.DOCKER_REPO }}:${{ steps.meta_release.outputs.version }}
+
+      - name: Create Docker image reference file
+        if: github.event_name == 'release'
+        run: echo "${{ vars.DOCKER_REPO }}:${{ github.event.release.tag_name }}" > docker-image.txt
+
+      - name: Upload Docker image reference file
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: docker-image.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
