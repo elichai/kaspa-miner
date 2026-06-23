@@ -1,15 +1,35 @@
-# Kaspa CPU Miner (Testnets)
+# Kaspa CPU Miner
+
+[![Latest version](https://img.shields.io/crates/v/kaspa-miner.svg)](https://crates.io/crates/kaspa-miner)
+![License](https://img.shields.io/crates/l/kaspa-miner.svg)
+
+A CPU miner for Kaspa testnets and development networks.
+
+CPU mining is no longer used for competitive Kaspa mainnet mining. This miner is maintained for testnet and development use.
+
+Originally created by [Elichai Turkel](https://github.com/elichai) in [`elichai/kaspa-miner`](https://github.com/elichai/kaspa-miner). Current maintenance, releases, and issue tracking are under [`kaspanet/cpuminer`](https://github.com/kaspanet/cpuminer).
 
 ## Installation
 
+### From crates.io
+
+With Rust's package manager Cargo, you can install `kaspa-miner` via:
+
+```sh
+cargo install kaspa-miner
+```
+
 ### From Binaries
+
 The [release page](https://github.com/kaspanet/cpuminer/releases) includes precompiled binaries for Linux, macOS and Windows.
 
-# Usage
+## Usage
+
 To start mining you need to run [kaspad](https://github.com/kaspanet/rusty-kaspa) and have an address to send the rewards to.
 See the Rusty Kaspa testnet docs for running a full node and generating addresses: https://github.com/kaspanet/rusty-kaspa/blob/master/docs/
 
-### Help:
+### Help
+
 ```
 A Kaspa high performance CPU miner
 
