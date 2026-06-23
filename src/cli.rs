@@ -5,6 +5,7 @@ use std::{net::IpAddr, str::FromStr};
 
 #[derive(Debug, Parser)]
 #[clap(about, version, author)]
+#[clap(group(ArgGroup::new("throttle_group").args(&["throttle", "throttle_microseconds"])))]
 #[clap(group(ArgGroup::new("required")))]
 pub struct Opt {
     #[clap(short, long, display_order = 3)]
@@ -41,7 +42,10 @@ pub struct Opt {
     #[clap(long = "throttle", display_order = 9)]
     /// Throttle (milliseconds) between each pow hash generation (used for development testing)
     pub throttle: Option<u64>,
-    #[clap(long, display_order = 10)]
+    #[clap(long = "throttle-microseconds", display_order = 10)]
+    /// Throttle (microseconds) between each pow hash generation (used for development testing)
+    pub throttle_microseconds: Option<u64>,
+    #[clap(long, display_order = 11)]
     /// Output logs in alternative format (same as kaspad)
     pub altlogs: bool,
     #[clap(long = "user-agent-suffix", display_order = 11)]

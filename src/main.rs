@@ -72,7 +72,7 @@ async fn main() -> Result<(), Error> {
     }
     builder.init();
 
-    let throttle = opt.throttle.map(Duration::from_millis);
+    let throttle = opt.throttle.map(Duration::from_millis).or_else(|| opt.throttle_microseconds.map(Duration::from_micros));
     let shutdown = ShutdownHandler(Arc::new(AtomicBool::new(false)));
     let _shutdown_when_dropped = shutdown.arm();
 
